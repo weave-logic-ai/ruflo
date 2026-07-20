@@ -39,3 +39,5 @@ export { agentbbsTools } from './agentbbs-tools.js';
 export { businessPodTools } from './business-pod-tools.js';
 // ADR-164 Phase 4 §5.1.8 — http_fetch (secure-by-default HTTP probe)
 export { httpFetchTools } from './http-fetch-tools.js';
+// ADR-320 — host-agnostic Agent Teams bus
+export { teamTools } from './team-tools.js';

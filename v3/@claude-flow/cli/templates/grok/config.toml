@@ -15,15 +15,14 @@ enabled = true
 startup_timeout_sec = 120
 tool_timeout_sec = 180
 
-# RuvNet Brain grounding — search_ruvnet over embedded rUv source.
-# Install: npx ruvnet-brain@latest  (kb lives under ~/.cache/ruvnet-brain/kb)
-# Grok expands ~ in args; if not, use absolute path to forge-mcp-all.mjs.
-[mcp_servers.ruvnet-brain]
-command = "node"
-args = ["/Users/mathewbeane/.cache/ruvnet-brain/kb/forge-mcp-all.mjs"]
-enabled = true
-startup_timeout_sec = 90
-tool_timeout_sec = 120
+# Optional: RuvNet Brain grounding (install first: npx ruvnet-brain@latest)
+# Uncomment and set the absolute path to forge-mcp-all.mjs after install.
+# [mcp_servers.ruvnet-brain]
+# command = "node"
+# args = ["REPLACE_WITH_HOME/.cache/ruvnet-brain/kb/forge-mcp-all.mjs"]
+# enabled = true
+# startup_timeout_sec = 90
+# tool_timeout_sec = 120
 
 # ---------------------------------------------------------------------------
 # Permissions — allow Ruflo CLI + helpers without re-prompting every turn
@@ -38,7 +37,6 @@ allow = [
   "Bash(npx -y ruflo*)",
   "Bash(node scripts/grok-team-bus.mjs*)",
   "MCPTool(ruflo__*)",
-  "MCPTool(ruvnet-brain__*)",
 ]
 
 # ---------------------------------------------------------------------------

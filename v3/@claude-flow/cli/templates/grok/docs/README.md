@@ -41,10 +41,6 @@ npx ruvnet-brain@latest
 
 ## Agent Teams (no Claude SendMessage)
 
-Prefer MCP when available: `team_create`, `team_plan`, `team_spawn` (returns spawn plan), `team_send`, `team_inbox`, `team_on_stop`, `team_shutdown`.
-
-CLI fallback:
-
 ```bash
 node scripts/grok-team-bus.mjs create --name feature-x
 node scripts/grok-team-bus.mjs plan --team feature-x \
@@ -72,6 +68,6 @@ Feature work lands on `feat/grok-host` (or similar), not upstream `main` force-p
 - [x] Grok agents + skill
 - [x] MCP `team_*` tools inside Ruflo server (ADR-320; local build / next publish)
 - [x] `npx ruflo init --grok` productization
-- [x] RuvNet Brain MCP wired (project `.grok/config.toml` → forge-mcp-all.mjs)
+- [ ] RuvNet Brain MCP wired
 - [ ] Conformance bench vs Claude host
 )

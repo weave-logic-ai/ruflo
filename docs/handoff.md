@@ -1,86 +1,93 @@
 # Handoff — ruflo (Grok host) — 2026-07-20
 
-Ruflo is the rUv agent meta-harness (MCP + CLI + hooks + swarms + AgentDB). This checkout is a **weave-logic-ai fork** being adapted so the harness runs **in Grok Build**, with agent teams and skills treated as critical—not a thin Codex-style CLI wrapper. Foundation for the Grok host is on branch `feat/grok-host`, **uncommitted**, MCP and memory verified, team bus MVP working via filesystem CLI.
+Ruflo is the rUv agent meta-harness (MCP + CLI + hooks + swarms + AgentDB). This checkout is a **weave-logic-ai fork** adapted so the harness runs **in Grok Build**, with agent teams and skills treated as critical. Branch `feat/grok-host` has host surface committed + pushed, plus uncommitted product work: Brain wiring, MCP `team_*` tools, and `init --grok`.
 
 ## Current state
 
-- Branch `feat/grok-host` @ `12ede21767a6dd669df1b79392a5d27d9154f237` (same tip as `upstream/main` / PR #2725 merge), **dirty — untracked only** (no commits yet on this branch beyond shared main tip)
+- Branch `feat/grok-host` tracking `origin/feat/grok-host`
+  - **Pushed:** `89a7eaa1e` — host surface (`.grok/`, team bus scripts, ADR-320, docs)
+  - **Dirty (local, not yet committed):** team MCP tools, `init --grok`, Brain config, templates, tests
 - Remotes:
   - `origin` → `git@github.com:weave-logic-ai/ruflo.git`
   - `upstream` → `git@github.com:ruvnet/ruflo.git`
 - Toolchain: Node **v22.23.1**, `grok` at `~/.grok/bin/grok`, published **`ruflo v3.32.8`** via `npx -y ruflo@latest`
-- Local monorepo CLI **`v3/@claude-flow/cli/dist` is missing** — do not point MCP at local bin until built; always use published package for MCP/CLI
-- Ruflo MCP registered **project-scoped** in `.grok/config.toml`; `grok mcp list` shows `ruflo` (project)
-- Memory DB initialized at `.swarm/memory.db` (hybrid + HNSW); pattern `grok-host-smoke` stored
-- Folder is **trusted** in `~/.grok/trusted_folders.toml` (hooks can run)
-- RuvNet Brain **not installed** (`~/.cache/ruvnet-brain` absent); package on npm is `ruvnet-brain@3.4.21-dev`
-- No full monorepo tsc/lint/container build run this session (host-integration only)
-- Smoke team `smoke-demo` may still exist under `.claude-flow/teams/` (gitignored) — leftover from bus smoke, status `shutdown`
+- Local monorepo CLI **`v3/@claude-flow/cli/dist` still missing** unless pnpm build finishes — published MCP still has **327 tools** (no `team_*` until local build or publish)
+- Smoke team `smoke-demo` **cleared** (`.claude-flow/teams/` empty)
+- RuvNet Brain **installed** at `~/.cache/ruvnet-brain/kb` (v3.4.21-dev, 60 repos)
+- Brain MCP wired in project `.grok/config.toml`; **handshake OK, 1 tool** (`search_ruvnet`) after patching missing `forge-hybrid.mjs`
+- Memory: pattern `grok-host-smoke` still present
 
-### Untracked (ready to commit when asked)
+### Uncommitted (next commit)
 
 ```
-.grok/                          # config, rules, agents, skills, hooks
+.grok/config.toml                 # ruvnet-brain MCP + permissions
+.grok/skills/agent-teams-grok/    # MCP team_* preferred
 docs/grok/README.md
-docs/handoff.md                 # this file
-scripts/grok-team-bus.mjs
-scripts/grok-subagent-stop-hook.mjs
-v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md
+v3/docs/adr/ADR-320-*.md          # status bump
+v3/@claude-flow/cli/src/mcp-tools/team-tools.ts
+v3/@claude-flow/cli/src/mcp-client.ts
+v3/@claude-flow/cli/src/mcp-tools/index.ts
+v3/@claude-flow/cli/src/init/grok-generator.ts
+v3/@claude-flow/cli/src/commands/init.ts   # --grok
+v3/@claude-flow/cli/src/init/index.ts
+v3/@claude-flow/cli/package.json          # templates/ in files
+v3/@claude-flow/cli/templates/grok/**     # init templates
+v3/@claude-flow/cli/__tests__/team-tools.test.ts
+docs/handoff.md
 ```
 
 ## What's working (verified)
 
 | Thing | State | Verified how |
 |---|---|---|
-| Git remotes weave-logic-ai + ruvnet | works | `git remote -v`; `git fetch origin` / `upstream` succeeded; tips matched `12ede2176` |
-| Project `.grok/config.toml` TOML | works | `python3 tomllib` parse OK after fix |
-| Grok MCP `ruflo` | works | `grok mcp list` → project; `grok mcp doctor ruflo` → handshake OK, **327 tools** |
-| Ruflo CLI (npx) | works | `npx -y ruflo@latest --version` → `ruflo v3.32.8` |
-| AgentDB memory init + store/search | works | `memory init` verification 6/6; store `patterns/grok-host-smoke`; search "grok host" score **0.77** in **9ms** |
-| Team bus CLI MVP | works | create/plan/spawn/send/inbox/on-stop/status/shutdown on team `smoke-demo` |
-| Grok project rules/skills/agents | on disk | `.grok/rules/ruflo-grok.md`, agents, `agent-teams-grok` + `handoff` skills |
-| Handoff path convention | locked | **always `docs/handoff.md`**; skill vendored at `.grok/skills/handoff/` |
+| Commit+push host surface | works | `git push -u origin feat/grok-host` → `89a7eaa1e` |
+| Clear smoke-demo | works | shutdown + `rm -rf .claude-flow/teams/smoke-demo` |
+| Team bus CLI MVP | works | create/plan/spawn/send/inbox/on-stop/shutdown on `smoke2` |
+| Grok templates pack | works | walk-copy smoke → config + bus + 4 agents |
+| RuvNet Brain install | works | `npx ruvnet-brain@latest --yes …` exit 0; doctor healthy install |
+| Brain MCP handshake | works | `grok mcp doctor ruvnet-brain` → handshake OK, 1 tool (after forge-hybrid copy) |
+| Ruflo MCP (published) | works | doctor → 327 tools (no team_* yet on published) |
+| `team_*` source | written | 9 tools registered in `mcp-client.ts` |
+| `init --grok` source | written | flag + `executeGrokInit` + templates |
 
-## Done this session
+## Done this session (resume)
 
-- Plan: Grok can run Ruflo; target is **better than Claude Code** (agent teams + skills + Brain grounding + worktree isolation), not Codex-only MVP
-- Remotes rewired for fork development on weave-logic-ai
-- Project Grok host surface: MCP config, doctrine rules, 4 role agents, agent-teams skill, SubagentStop hook adapter
-- **Host-agnostic team bus** (`scripts/grok-team-bus.mjs`) per ADR-320 — filesystem mailboxes under `.claude-flow/`, spawn plans for Grok `spawn_subagent` (no Claude `SendMessage`)
-- ADR-320 written: put Agent Teams bus in Ruflo, not in host
-- Memory initialized; smoke pattern stored for resume
-- Handoff skill project-vendored; canonical path **`docs/handoff.md`**
+- Cleared leftover `smoke-demo` team
+- Committed + pushed Phase 0 host surface to weave-logic-ai
+- Installed RuvNet Brain (843MB bundle) + wired project MCP
+- Patched missing `forge-hybrid.mjs` into kb (release zip incomplete vs marketplace)
+- Implemented ADR-320 MCP tools: `team_create/spawn/send/inbox/broadcast/plan/status/on_stop/shutdown`
+- Productized `init --grok` + CLI `templates/grok/`
+- Updated skill/docs to prefer MCP over CLI bus
 
 ## Measurements & calibration
 
 | Metric | Value | Notes |
 |---|---|---|
-| Ruflo MCP tools discovered | **327** | `grok mcp doctor ruflo` |
-| MCP handshake | OK, protocol 2024-11-05 | cold npx; keep `startup_timeout_sec = 120` |
-| Memory search latency | **9ms** (later) / 3ms (earlier) | query "grok host" / "grok host agent teams" |
-| Semantic hit on smoke key | **0.77** / **0.71** | `patterns/grok-host-smoke` |
-| AgentDB controller init | Activated **16**, Failed **7**, Init **~31857ms** | from `memory init` output |
-| Published package | **ruflo v3.32.8** | matches main tip release |
-| npx cache failure (once) | `ENOTEMPTY` rename on agentdb | fixed by removing broken `_npx/2ed56890c96f58f7` cache dir |
+| Brain download | **843MB** zip (~20 min cold) | v3.4.21-dev |
+| Brain MCP tools | **1** (`search_ruvnet`) | after forge-hybrid fix |
+| Ruflo published tools | **327** | no team_* until build/publish |
+| Team bus smoke | create→shutdown OK | temp dir `smoke2` |
+| Memory search "grok host" | score **0.77**, ~20ms | prior session pattern |
 
 ## Dead ends — do not retry
 
-- **Pointing MCP/CLI at monorepo `v3/@claude-flow/cli/bin/cli.js` without build** — `ERR_MODULE_NOT_FOUND` for `dist/src/index.js`. Use `npx -y ruflo@latest` until `dist/` exists.
-- **Empty / broken TOML tables in `.grok/config.toml`** — a stray `)` after `[subagents]` and empty `[subagents.models]` caused `TOML parse error`; Grok then reported **no MCP servers**. Always re-run `grok mcp list` after editing project config.
-- **Expecting Claude `SendMessage` / TeammateTool on Grok** — teammate-plugin is Claude-bound (`~/.claude/teams/`, Task AgentInput). Use team bus + `spawn_subagent` instead.
-- **Relying on UserPromptSubmit hook stdout for routing/Brain injection** — Grok passive hooks largely ignore stdout; use system rules + MCP tools + file/CLI fallbacks (see `.grok/rules/ruflo-grok.md`).
-- **Codex-only "executor + ledger records" as the end state** — user rejected as insufficient; agent teams, skills, and Brain grounding are **P0**.
-- **Assuming `~/.claude/skills/handoff` alone is enough for the fork** — user-level Claude skill is discoverable via compat, but project skill was vendored so weave-logic-ai does not depend on one machine's `~/.claude`.
+- **Pointing MCP at unbuilt monorepo CLI** — still no `dist/`; use `npx -y ruflo@latest` until pnpm build.
+- **Expecting published ruflo@latest to expose `team_*` immediately** — source-only until local build or npm publish.
+- **Brain bundle alone without forge-hybrid.mjs** — release zip missing hybrid module; MCP handshake fails. Fix: `cp ~/.claude/plugins/marketplaces/ruvnet-brain/kb/forge-hybrid.mjs ~/.cache/ruvnet-brain/kb/`
+- **npm install inside `v3/@claude-flow/cli` alone** — `workspace:*` / v3 monorepo root; use **pnpm** from `v3/`.
+- **Claude SendMessage on Grok** — still wrong; use team bus / MCP.
+- **Hardcoding only HOME tilde in Grok MCP args** — use absolute path to forge-mcp-all.mjs (project config does).
 
 ## Open threads
 
-1. **Commit + push `feat/grok-host` to origin (weave-logic-ai)** — not done; user must approve commit. Done = PR branch with host surface + ADR + scripts.
-2. **Install and wire RuvNet Brain** — `npx ruvnet-brain@latest`, then enable commented MCP block in `.grok/config.toml` (or add forge-mcp path). Done = `search_ruvnet` callable from Grok; embeddings answers cite RuVector not Pinecone.
-3. **Native MCP `team_*` tools** — CLI bus is interim; promote create/send/inbox/spawn-plan into Ruflo MCP server. Done = `search_tool` finds `team_create` etc. without shelling out.
-4. **`init --grok` productization** — mirror `init --codex`. Done = one command writes `.grok/*` for any repo.
-5. **Restart Grok session** so this interactive session fully loads project MCP/rules/skills (doctor worked from CLI; in-session tools may need reload).
-6. **Optional:** clear leftover `.claude-flow/teams/smoke-demo`; remove `.LOCKED` helper auto-refresh marker if helper refresh is needed.
-7. **Upstream merge discipline** — keep `team_*` host-agnostic so it can PR to ruvnet later; do not force-push upstream.
+1. **Commit + push product delta** (team tools, init --grok, brain config, templates) — in progress at handoff write time.
+2. **Local build** — `cd v3 && pnpm install --filter @claude-flow/cli... && pnpm --filter @claude-flow/cli build` then point MCP at local bin **or** publish.
+3. **Vitest** — `__tests__/team-tools.test.ts` ready once deps installed.
+4. **Brain grounding demo** — doctor install healthy but first-ask may need model warm-up (`npx ruvnet-brain --demo`).
+5. **Optional RuVector MCP** — not installed; brain answers work without it.
+6. **Conformance bench vs Claude host** — not started.
+7. **Upstream PR** — keep host-agnostic; do not force-push upstream.
 
 ## Resume here
 
@@ -88,47 +95,47 @@ v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md
 cd /Users/mathewbeane/dev/ruflo
 git checkout feat/grok-host
 git status -sb
-git remote -v   # origin=weave-logic-ai, upstream=ruvnet
 
-# Confirm host surface
+# Verify MCPs
 grok mcp list
 grok mcp doctor ruflo
-npx -y ruflo@latest --version
-npx -y ruflo@latest memory search --query "grok host"
+grok mcp doctor ruvnet-brain
 
-# Team bus smoke (optional)
-node scripts/grok-team-bus.mjs create --name resume-demo --topology hierarchical
-node scripts/grok-team-bus.mjs spawn --team resume-demo --agent architect --role architect \
-  --prompt "Sanity check handoff resume" --next developer
+# If brain handshake fails on forge-hybrid:
+cp ~/.claude/plugins/marketplaces/ruvnet-brain/kb/forge-hybrid.mjs \
+   ~/.cache/ruvnet-brain/kb/forge-hybrid.mjs
 
-# Next product work (pick one)
-# A) commit + push feat/grok-host when user asks
-# B) npx ruvnet-brain@latest && wire MCP in .grok/config.toml
-# C) implement team_* MCP tools in CLI package (requires local build of dist/)
+# Build team_* into local CLI (when pnpm ready)
+cd v3
+pnpm install --filter @claude-flow/cli...
+pnpm --filter @claude-flow/cli build
+pnpm --filter @claude-flow/cli exec vitest run __tests__/team-tools.test.ts
+
+# Optional: point .grok/config.toml ruflo MCP at local:
+#   command = "node"
+#   args = ["…/v3/@claude-flow/cli/bin/cli.js", "mcp", "start"]
+
+# Init smoke (from built package or tsx)
+# npx -y ruflo@latest init --grok --force   # only after publish
 ```
 
 ## Key paths
 
-- `docs/handoff.md` — **this file** (canonical handoff; rewrite only)
-- `.grok/config.toml` — project MCP + permissions (`startup_timeout_sec = 120`)
-- `.grok/rules/ruflo-grok.md` — Grok host doctrine / tool map
-- `.grok/agents/ruflo-*.md` — architect / coder / tester / reviewer
-- `.grok/skills/agent-teams-grok/` — multi-agent pipeline skill
-- `.grok/skills/handoff/` — project handoff skill (prefers this path)
-- `scripts/grok-team-bus.mjs` — host-agnostic Agent Teams bus (ADR-320 MVP)
-- `scripts/grok-subagent-stop-hook.mjs` — SubagentStop → `on-stop`
-- `v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md` — architecture decision
-- `docs/grok/README.md` — operator guide for Grok host
-- `.swarm/memory.db` — AgentDB (initialized this session)
-- Plan (session): `~/.grok/sessions/.../plan.md` — long-form feasibility plan (not committed)
+- `docs/handoff.md` — this file
+- `.grok/config.toml` — ruflo + ruvnet-brain MCP
+- `v3/@claude-flow/cli/src/mcp-tools/team-tools.ts` — ADR-320 MCP tools
+- `v3/@claude-flow/cli/src/init/grok-generator.ts` — `init --grok`
+- `v3/@claude-flow/cli/templates/grok/` — scaffold templates
+- `scripts/grok-team-bus.mjs` — CLI fallback bus
+- `~/.cache/ruvnet-brain/kb/forge-mcp-all.mjs` — Brain MCP entry
+- `v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md`
 
 ## Gotchas
 
-- **Restart Grok after editing `.grok/config.toml`** or MCP will look “missing.”
-- **Never use unbuilt local CLI for MCP** until `v3/@claude-flow/cli/dist/src/index.js` exists.
-- **`.claude-flow/` is gitignored** — team/mailbox state is local only; document team names in handoff if needed.
-- **Claude Agent Teams language in root `Claude.md`** still describes `SendMessage` / `Task`; on Grok, `.grok/rules/ruflo-grok.md` wins for host behavior.
-- **Helper `.LOCKED` marker** skips helper auto-refresh — noisy WARN only unless you need helper updates.
-- **User rule: do not commit to master/main** without explicit exception; this work is on `feat/grok-host`.
-- **Don't commit unless asked** for this handoff file either — write only.
+- **Restart Grok** after `.grok/config.toml` edits so MCP list refreshes in-session.
+- **forge-hybrid.mjs** missing from some brain zip extracts — copy from marketplace clone.
+- **Published vs local tools** — in-session `ruflo` MCP is still npx latest until you rewire to local dist.
+- **Absolute path** to forge-mcp-all embeds username — other machines must edit `.grok/config.toml`.
+- **Do not commit to main**; keep work on `feat/grok-host`.
+- **Don't commit secrets**; brain is under `~/.cache` (not repo).
 )

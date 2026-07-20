@@ -1,6 +1,6 @@
 # ADR-320: Host-Agnostic Agent Teams (Grok-first, Claude-portable)
 
-**Status:** Accepted (implementation in progress on weave-logic-ai/ruflo)  
+**Status:** Accepted (Phase 0–4 landed on weave-logic-ai/ruflo `feat/grok-host`)  
 **Date:** 2026-07-20  
 **Deciders:** weave-logic-ai / Ruflo Grok host effort  
 **Related:** ADR-018 (Claude Code integration), teammate-plugin, swarm-comms mailbox, RuvNet Brain grounding, `init --codex` pattern
