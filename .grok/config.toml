@@ -1,0 +1,46 @@
+# Ruflo on Grok Build — project-scoped host config
+# Loaded by Grok when this folder is trusted (see ~/.grok/trusted_folders.toml).
+#
+# Goal: full harness (MCP + hooks + skills + agent teams path), not a thin CLI wrapper.
+# See: .grok/rules/ruflo-grok.md and v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md
+
+# ---------------------------------------------------------------------------
+# Ruflo MCP — orchestrator / ledger (memory, swarm, hooks, team bus, neural)
+# Cold npx can exceed the default 30s startup; keep this high.
+# ---------------------------------------------------------------------------
+[mcp_servers.ruflo]
+command = "npx"
+args = ["-y", "ruflo@latest", "mcp", "start"]
+enabled = true
+startup_timeout_sec = 120
+tool_timeout_sec = 180
+
+# Optional: RuvNet Brain grounding (install first: npx ruvnet-brain)
+# Uncomment when ~/.cache/ruvnet-brain/kb exists and forge-mcp path is known.
+# [mcp_servers.ruvnet-brain]
+# command = "node"
+# args = ["REPLACE_WITH_HOME/.cache/ruvnet-brain/kb/forge-mcp-all.mjs"]
+# enabled = true
+# startup_timeout_sec = 60
+# tool_timeout_sec = 120
+
+# ---------------------------------------------------------------------------
+# Permissions — allow Ruflo CLI + helpers without re-prompting every turn
+# (deny still wins over allow; PreToolUse hooks can still block)
+# ---------------------------------------------------------------------------
+[permission]
+allow = [
+  "Bash(npx ruflo*)",
+  "Bash(npx @claude-flow*)",
+  "Bash(npx claude-flow*)",
+  "Bash(node .claude/*)",
+  "Bash(npx -y ruflo*)",
+  "Bash(node scripts/grok-team-bus.mjs*)",
+  "MCPTool(ruflo__*)",
+]
+
+# ---------------------------------------------------------------------------
+# Subagents — defaults that beat Claude Agent Teams on file races
+# ---------------------------------------------------------------------------
+[subagents]
+enabled = true
