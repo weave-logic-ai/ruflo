@@ -4,37 +4,18 @@ Ruflo is the rUv agent meta-harness (MCP + CLI + hooks + swarms + AgentDB). This
 
 ## Current state
 
-- Branch `feat/grok-host` tracking `origin/feat/grok-host`
-  - **Pushed:** `89a7eaa1e` — host surface (`.grok/`, team bus scripts, ADR-320, docs)
-  - **Dirty (local, not yet committed):** team MCP tools, `init --grok`, Brain config, templates, tests
+- Branch `feat/grok-host` @ `8f8771236` tracking `origin/feat/grok-host` (**clean** after product push)
+  - `89a7eaa1e` — host surface
+  - `8f8771236` — team_* MCP + init --grok + Brain wiring
 - Remotes:
   - `origin` → `git@github.com:weave-logic-ai/ruflo.git`
   - `upstream` → `git@github.com:ruvnet/ruflo.git`
 - Toolchain: Node **v22.23.1**, `grok` at `~/.grok/bin/grok`, published **`ruflo v3.32.8`** via `npx -y ruflo@latest`
-- Local monorepo CLI **`v3/@claude-flow/cli/dist` still missing** unless pnpm build finishes — published MCP still has **327 tools** (no `team_*` until local build or publish)
+- Local CLI **built** at `v3/@claude-flow/cli/dist` (gitignored) — exposes **9 `team_*` tools**; published MCP still **327 tools** until next npm publish
 - Smoke team `smoke-demo` **cleared** (`.claude-flow/teams/` empty)
 - RuvNet Brain **installed** at `~/.cache/ruvnet-brain/kb` (v3.4.21-dev, 60 repos)
 - Brain MCP wired in project `.grok/config.toml`; **handshake OK, 1 tool** (`search_ruvnet`) after patching missing `forge-hybrid.mjs`
 - Memory: pattern `grok-host-smoke` still present
-
-### Uncommitted (next commit)
-
-```
-.grok/config.toml                 # ruvnet-brain MCP + permissions
-.grok/skills/agent-teams-grok/    # MCP team_* preferred
-docs/grok/README.md
-v3/docs/adr/ADR-320-*.md          # status bump
-v3/@claude-flow/cli/src/mcp-tools/team-tools.ts
-v3/@claude-flow/cli/src/mcp-client.ts
-v3/@claude-flow/cli/src/mcp-tools/index.ts
-v3/@claude-flow/cli/src/init/grok-generator.ts
-v3/@claude-flow/cli/src/commands/init.ts   # --grok
-v3/@claude-flow/cli/src/init/index.ts
-v3/@claude-flow/cli/package.json          # templates/ in files
-v3/@claude-flow/cli/templates/grok/**     # init templates
-v3/@claude-flow/cli/__tests__/team-tools.test.ts
-docs/handoff.md
-```
 
 ## What's working (verified)
 
@@ -47,8 +28,9 @@ docs/handoff.md
 | RuvNet Brain install | works | `npx ruvnet-brain@latest --yes …` exit 0; doctor healthy install |
 | Brain MCP handshake | works | `grok mcp doctor ruvnet-brain` → handshake OK, 1 tool (after forge-hybrid copy) |
 | Ruflo MCP (published) | works | doctor → 327 tools (no team_* yet on published) |
-| `team_*` source | written | 9 tools registered in `mcp-client.ts` |
-| `init --grok` source | written | flag + `executeGrokInit` + templates |
+| `team_*` local MCP | works | 9 tools via `callMCPTool`; vitest 2/2 |
+| `init --grok` local CLI | works | temp dir: 12 files created |
+| Commit+push product delta | works | `8f8771236` on origin |
 
 ## Done this session (resume)
 
@@ -81,13 +63,12 @@ docs/handoff.md
 
 ## Open threads
 
-1. **Commit + push product delta** (team tools, init --grok, brain config, templates) — in progress at handoff write time.
-2. **Local build** — `cd v3 && pnpm install --filter @claude-flow/cli... && pnpm --filter @claude-flow/cli build` then point MCP at local bin **or** publish.
-3. **Vitest** — `__tests__/team-tools.test.ts` ready once deps installed.
-4. **Brain grounding demo** — doctor install healthy but first-ask may need model warm-up (`npx ruvnet-brain --demo`).
-5. **Optional RuVector MCP** — not installed; brain answers work without it.
-6. **Conformance bench vs Claude host** — not started.
-7. **Upstream PR** — keep host-agnostic; do not force-push upstream.
+1. **Wire Grok MCP to local CLI** (optional) so in-session `ruflo__team_*` appears without publishing — point `.grok/config.toml` at `v3/@claude-flow/cli/bin/cli.js mcp start`.
+2. **Publish** `@claude-flow/cli` / `ruflo` when ready so `npx ruflo@latest` includes `team_*` + `init --grok`.
+3. **Brain grounding demo** — install healthy; first-ask may need warm-up (`npx ruvnet-brain --demo`).
+4. **Optional RuVector MCP** — not installed; brain answers work without it.
+5. **Conformance bench vs Claude host** — not started.
+6. **Upstream PR** to ruvnet — host-agnostic only; no force-push upstream.
 
 ## Resume here
 
