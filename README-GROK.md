@@ -13,12 +13,79 @@
 
 ---
 
-## Two install paths
+## Use Ruflo on a project *outside* this directory
+
+**Yes — Ruflo is meant to run inside whatever app you’re building**, not only inside the ruflo monorepo. The monorepo is where you *develop* the harness; your other repo is where you *use* it.
+
+All of the following commands are run from **your app’s root** (e.g. `~/dev/my-saas`), unless noted.
+
+### Option 1 — Published npm (after ruv ships ADR-320 / Grok host)
+
+```bash
+cd /path/to/your-app          # ← any project, not the ruflo repo
+
+npx -y ruflo@latest init --grok
+# creates .grok/, scripts/grok-team-bus.mjs, docs/grok/ in *this* project
+
+# Trust this folder in Grok, then restart Grok so project MCP loads.
+grok mcp list
+grok mcp doctor ruflo         # expect team_* once the published release has them
+```
+
+Open Grok **in `/path/to/your-app`** (or with that folder as the workspace). Project config lives at **`your-app/.grok/config.toml`** — not in the ruflo clone.
+
+### Option 2 — Local monorepo CLI (pre-publish / bleeding edge)
+
+Build Ruflo once, then point **any** project’s MCP at that binary:
+
+```bash
+# --- once: build the harness (inside the ruflo clone) ---
+cd /path/to/ruflo             # this repo
+cd v3 && pnpm install && pnpm --filter @claude-flow/cli build
+# binary: /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js
+
+# --- for each external app ---
+cd /path/to/your-app          # ← different directory
+
+# Scaffold Grok files into *your-app* using the local CLI:
+node /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js init --grok
+# or:  node /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js init --grok --force
+```
+
+Then edit **`/path/to/your-app/.grok/config.toml`** so Ruflo MCP uses the **built** CLI (absolute paths):
+
+```toml
+[mcp_servers.ruflo]
+command = "node"
+args = ["/path/to/ruflo/v3/@claude-flow/cli/bin/cli.js", "mcp", "start"]
+enabled = true
+startup_timeout_sec = 120
+tool_timeout_sec = 180
+```
+
+Restart Grok with **your-app** as the workspace:
+
+```bash
+cd /path/to/your-app
+grok mcp doctor ruflo         # ~336 tools incl. team_* while using local CLI
+```
+
+| Piece | Lives where |
+|-------|-------------|
+| Your code, `.grok/`, team bus scripts, handoff docs | **`your-app/`** |
+| Ruflo CLI source + `dist` | **`ruflo/` monorepo** (or npm after publish) |
+| Team/swarm/memory state (`.claude-flow/`, `.swarm/`) | **`your-app/`** (project-local) |
+
+You do **not** need to open the ruflo monorepo in Grok to work on another product — only to rebuild the CLI when you change harness code.
+
+---
+
+## Two install paths (detail)
 
 | Path | When to use | MCP entrypoint |
 |------|-------------|----------------|
 | **A. Published** (`npx ruflo@latest`) | After this work is merged upstream and **ruv publishes** a release that includes `init --grok` + `team_*` MCP tools | `npx -y ruflo@latest mcp start` |
-| **B. Local monorepo** | Developing this fork / pre-publish / verifying latest `feat/grok-host` | `node <repo>/v3/@claude-flow/cli/bin/cli.js mcp start` |
+| **B. Local monorepo** | Developing this fork / pre-publish / verifying latest `feat/grok-host` | `node <abs-path-to-ruflo>/v3/@claude-flow/cli/bin/cli.js mcp start` |
 
 Today (pre-publish): published `ruflo@latest` may still ship **~327** tools **without** `team_*`. A local build exposes **~336** tools **including** 9 `team_*` tools. After a ruv release that includes ADR-320, Path A and Path B converge.
 
@@ -27,7 +94,7 @@ Today (pre-publish): published `ruflo@latest` may still ship **~327** tools **wi
 ## Prerequisites
 
 - **Node.js 20+** (22.x recommended)
-- **Grok Build** CLI (`grok`) with this project folder **trusted** (hooks + project MCP)
+- **Grok Build** CLI (`grok`) with **your app’s folder** trusted (hooks + project MCP)
 - **pnpm** only if you build from monorepo source (Path B)
 - Optional: [RuvNet Brain](https://isovision.ai/ruvnet-brain/) for source-grounded `search_ruvnet`
 
@@ -37,10 +104,10 @@ Today (pre-publish): published `ruflo@latest` may still ship **~327** tools **wi
 
 Assumes a ruv npm release after an upstream PR lands (packages `ruflo` / `@claude-flow/cli` with Grok host + `team_*`).
 
-### 1. Scaffold any project
+### 1. Scaffold any project (not this monorepo)
 
 ```bash
-cd /path/to/your-app
+cd /path/to/your-app          # e.g. ~/dev/my-saas — outside the ruflo clone
 npx -y ruflo@latest init --grok
 # Overwrite existing Grok files if needed:
 # npx -y ruflo@latest init --grok --force
@@ -101,9 +168,10 @@ npx -y ruflo@latest doctor
 
 ## Path B — Local monorepo source (this repo / pre-publish)
 
-Use this while developing on a fork (e.g. weave-logic-ai `feat/grok-host`) or before npm has `team_*`.
+Use this while developing on a fork (e.g. weave-logic-ai `feat/grok-host`) or before npm has `team_*`.  
+**Target app can still be outside this directory** — see [Use Ruflo on a project outside this directory](#use-ruflo-on-a-project-outside-this-directory) Option 2.
 
-### 1. Clone & build the CLI
+### 1. Clone & build the CLI (once, in the ruflo clone)
 
 ```bash
 git clone git@github.com:weave-logic-ai/ruflo.git   # or your fork
@@ -118,21 +186,27 @@ pnpm --filter @claude-flow/cli build
 Entry point after build:
 
 ```text
-v3/@claude-flow/cli/bin/cli.js
+/ABS/PATH/TO/ruflo/v3/@claude-flow/cli/bin/cli.js
 ```
 
-### 2. Scaffold (optional for this monorepo)
+### 2. Scaffold into an external project
 
-The monorepo already has a Grok surface under `.grok/`. For **another** project:
+`init --grok` writes files into **whatever directory is the current working directory**:
 
 ```bash
-# From the monorepo root — init target is cwd
-node v3/@claude-flow/cli/bin/cli.js init --grok --force
+# Wrong if you only want harness files in my-app: don't leave cwd as the monorepo
+# unless you intend to refresh monorepo .grok/
+
+cd /path/to/your-app
+node /ABS/PATH/TO/ruflo/v3/@claude-flow/cli/bin/cli.js init --grok
+# --force overwrites existing .grok/ files in your-app
 ```
 
-### 3. Point Grok MCP at the local CLI
+The monorepo already has its own `.grok/` for dogfooding; you usually **do not** re-init here when targeting another product.
 
-Edit **project** `.grok/config.toml` (absolute paths; do not rely on `~` alone):
+### 3. Point that project’s Grok MCP at the local CLI
+
+Edit **`/path/to/your-app/.grok/config.toml`** (absolute paths; do not rely on `~` alone):
 
 ```toml
 [mcp_servers.ruflo]
@@ -143,28 +217,30 @@ startup_timeout_sec = 120
 tool_timeout_sec = 180
 ```
 
-Restart Grok, then:
+Open Grok with **your-app** as the workspace, restart if needed, then:
 
 ```bash
+cd /path/to/your-app
 grok mcp doctor ruflo
 # Expect ~336 tools including team_create, team_spawn, team_send, …
 ```
 
-CLI smoke without Grok:
+CLI smoke (from anywhere; state is still cwd-relative for team/swarm):
 
 ```bash
-node v3/@claude-flow/cli/bin/cli.js mcp tools | head
-node v3/@claude-flow/cli/bin/cli.js mcp exec -t swarm_init -p '{"topology":"hierarchical","maxAgents":4}'
-node v3/@claude-flow/cli/bin/cli.js mcp exec -t team_create -p '{"name":"demo","host":"grok"}'
+cd /path/to/your-app
+node /ABS/PATH/TO/ruflo/v3/@claude-flow/cli/bin/cli.js mcp tools | head
+node /ABS/PATH/TO/ruflo/v3/@claude-flow/cli/bin/cli.js mcp exec -t swarm_init -p '{"topology":"hierarchical","maxAgents":4}'
+node /ABS/PATH/TO/ruflo/v3/@claude-flow/cli/bin/cli.js mcp exec -t team_create -p '{"name":"demo","host":"grok"}'
 ```
 
 ### 4. After upstream publish
 
 When ruv ships a release that includes this work:
 
-1. Switch `.grok/config.toml` back to Path A (`npx -y ruflo@latest mcp start`), **or** keep Path B for bleeding-edge monorepo work.
-2. Re-run `npx -y ruflo@latest init --grok` on consumer projects to refresh templates.
-3. Confirm tool count / `team_*` with `grok mcp doctor ruflo`.
+1. In **each consumer app**, switch `.grok/config.toml` to Path A (`npx -y ruflo@latest mcp start`), **or** keep pointing at a local build for bleeding-edge harness work.
+2. Re-run `npx -y ruflo@latest init --grok` **inside each app** to refresh templates.
+3. Confirm tool count / `team_*` with `grok mcp doctor ruflo` from that app.
 
 ---
 
@@ -361,21 +437,22 @@ Until that publish lands, Path B (local CLI) is the supported way to get `team_*
 ## Quick reference
 
 ```bash
-# Path A (published)
+# ── External app (Path A, published) ──
+cd /path/to/your-app
 npx -y ruflo@latest init --grok
-npx -y ruflo@latest mcp tools
 npx -y ruflo@latest doctor
-
-# Path B (local)
-cd v3 && pnpm --filter @claude-flow/cli build
-node v3/@claude-flow/cli/bin/cli.js init --grok
-node v3/@claude-flow/cli/bin/cli.js mcp exec -t team_create -p '{"name":"x","host":"grok"}'
-node scripts/bench-grok-host-conformance.mjs
-
-# Grok session
-grok mcp list
 grok mcp doctor ruflo
-grok mcp doctor ruvnet-brain   # if enabled
+
+# ── External app (Path B, local CLI) ──
+# once: cd /path/to/ruflo/v3 && pnpm --filter @claude-flow/cli build
+cd /path/to/your-app
+node /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js init --grok
+# set .grok/config.toml args to that same bin/cli.js, restart Grok
+grok mcp doctor ruflo
+
+# ── Dogfood / develop the harness itself ──
+cd /path/to/ruflo
+node scripts/bench-grok-host-conformance.mjs
 ```
 
 ---
