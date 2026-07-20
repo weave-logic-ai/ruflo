@@ -89,6 +89,6 @@ Feature work lands on `feat/grok-host` (or similar), not upstream `main` force-p
 - [x] MCP `team_*` tools inside Ruflo server (ADR-320; local build / next publish)
 - [x] `npx ruflo init --grok` productization
 - [x] Brain MCP template: `KB_DIR` + timeouts + `$HOME` expand on init
-- [ ] Conformance bench vs Claude host
+- [x] Conformance bench (`scripts/bench-grok-host-conformance.mjs` — teams/swarm/hive/learning/neural/CLI)
 - [ ] Publish release with team_* on `npx ruflo@latest`
 )

@@ -1,6 +1,6 @@
 # ADR-320: Host-Agnostic Agent Teams (Grok-first, Claude-portable)
 
-**Status:** Accepted (Phase 0–4 landed on weave-logic-ai/ruflo `feat/grok-host`)  
+**Status:** Accepted (Phases 0–4 complete on weave-logic-ai/ruflo `feat/grok-host`; see `docs/benchmarks/grok-host-conformance-latest.md`)  
 **Date:** 2026-07-20  
 **Deciders:** weave-logic-ai / Ruflo Grok host effort  
 **Related:** ADR-018 (Claude Code integration), teammate-plugin, swarm-comms mailbox, RuvNet Brain grounding, `init --codex` pattern
@@ -115,11 +115,15 @@ Grok lead calls `spawn_subagent` with the plan; it does **not** need `SendMessag
 
 ## Implementation plan (summary)
 
-1. Phase 0: project `.grok/config.toml` + rules + MCP smoke (this PR stream).
-2. Phase 1: mailbox-backed `team_create/send/inbox/status` MVP.
-3. Phase 2: `team_spawn` spawn plans + Grok agent defs + SubagentStop → `team_on_stop`.
-4. Phase 3: RuvNet Brain MCP + grounding rules.
-5. Phase 4: `init --grok` + conformance bench vs Claude host.
+1. Phase 0: project `.grok/config.toml` + rules + MCP smoke — **done**.
+2. Phase 1: mailbox-backed `team_create/send/inbox/status` MVP — **done** (CLI + MCP).
+3. Phase 2: `team_spawn` spawn plans + Grok agent defs + SubagentStop → `team_on_stop` — **done**.
+4. Phase 3: RuvNet Brain MCP + grounding rules — **done** (`KB_DIR` required).
+5. Phase 4: `init --grok` + host conformance bench — **done**.
+   - Bench: `node scripts/bench-grok-host-conformance.mjs`
+   - Domains: host surface, tool inventory, teams, swarm, hive-mind, learning loop, neural, CLI parity
+   - Report: `docs/benchmarks/grok-host-conformance-latest.{md,json}`
+   - Note: not a live Claude Task/SendMessage side-by-side; proves the **host-agnostic MCP/CLI surface** Grok uses is complete (same tools Claude would call via Ruflo).
 
 ## Alternatives considered
 
