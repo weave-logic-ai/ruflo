@@ -23,6 +23,7 @@ Host integration so Ruflo runs **at least as well as Claude Code**, with stronge
 grok mcp list
 # expect: ruflo (project)
 grok mcp doctor ruflo
+# published: ~327 tools; local CLI build with team_*: ~336 tools
 ```
 
 5. Optional daemon:
@@ -36,10 +37,29 @@ npx -y ruflo@latest doctor
 
 ```bash
 npx ruvnet-brain@latest
-# then wire forge-mcp into .grok/config.toml (see commented block)
+# Uncomment [mcp_servers.ruvnet-brain] in .grok/config.toml
+# init --grok expands $HOME → absolute paths. **Required:** env KB_DIR =
+# absolute path to ~/.cache/ruvnet-brain/kb (without it: passages not found).
+# Raise tool_timeout_sec (e.g. 600) for cold BGE model download.
+```
+
+7. **Local team_* without npm publish** (monorepo only):
+
+```bash
+cd v3 && pnpm --filter @claude-flow/cli build
+# Point [mcp_servers.ruflo] at node + ABS path to bin/cli.js (see config.toml comments)
+# Restart Grok → grok mcp doctor ruflo should report ~336 tools
 ```
 
 ## Agent Teams (no Claude SendMessage)
+
+Prefer **MCP** when available (in-session after local MCP or published team_*):
+
+```
+team_create → team_plan → team_spawn → spawn_subagent(plan) → team_send / team_inbox → team_on_stop → team_shutdown
+```
+
+CLI fallback (always works without MCP team_*):
 
 ```bash
 node scripts/grok-team-bus.mjs create --name feature-x
@@ -68,6 +88,7 @@ Feature work lands on `feat/grok-host` (or similar), not upstream `main` force-p
 - [x] Grok agents + skill
 - [x] MCP `team_*` tools inside Ruflo server (ADR-320; local build / next publish)
 - [x] `npx ruflo init --grok` productization
-- [ ] RuvNet Brain MCP wired
+- [x] Brain MCP template: `KB_DIR` + timeouts + `$HOME` expand on init
 - [ ] Conformance bench vs Claude host
+- [ ] Publish release with team_* on `npx ruflo@latest`
 )

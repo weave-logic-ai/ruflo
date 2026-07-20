@@ -3,10 +3,15 @@
 #
 # Goal: full harness (MCP + hooks + skills + agent teams path), not a thin CLI wrapper.
 # See: .grok/rules/ruflo-grok.md and v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md
+#
+# After editing: restart Grok (or reload MCPs) so tool lists refresh.
+# Prefer absolute paths for node MCP entrypoints — do not rely on ~ alone.
 
 # ---------------------------------------------------------------------------
 # Ruflo MCP — orchestrator / ledger (memory, swarm, hooks, team bus, neural)
-# Cold npx can exceed the default 30s startup; keep this high.
+# Default: published ruflo@latest. Cold npx can exceed 30s; keep timeouts high.
+# Until a release that includes team_* (ADR-320), local monorepo builds expose
+# them — override with the [mcp_servers.ruflo] local block below.
 # ---------------------------------------------------------------------------
 [mcp_servers.ruflo]
 command = "npx"
@@ -15,14 +20,30 @@ enabled = true
 startup_timeout_sec = 120
 tool_timeout_sec = 180
 
-# Optional: RuvNet Brain grounding (install first: npx ruvnet-brain@latest)
-# Uncomment and set the absolute path to forge-mcp-all.mjs after install.
+# Local CLI override (dev / pre-publish team_* tools):
+# After `pnpm --filter @claude-flow/cli build` from v3/:
+#   command = "node"
+#   args = ["ABS_PATH_TO_REPO/v3/@claude-flow/cli/bin/cli.js", "mcp", "start"]
+# init --grok leaves this as comments; expand paths yourself or re-run with --force
+# after editing the template on a machine that has the monorepo built.
+
+# ---------------------------------------------------------------------------
+# Optional: RuvNet Brain grounding (search_ruvnet over embedded rUv source)
+# Install: npx ruvnet-brain@latest  → kb under ~/.cache/ruvnet-brain/kb
+#
+# forge-mcp-all defaults KB_DIR to process.cwd(). When Grok spawns MCP from the
+# project root, search fails with "passages sidecar not found: ./agentdb…".
+# Always set env.KB_DIR to the absolute kb path. tool_timeout_sec high for cold
+# BGE model download (first big search can take minutes).
+# init --grok expands {{HOME}} path placeholders when writing this file.
+# ---------------------------------------------------------------------------
 # [mcp_servers.ruvnet-brain]
 # command = "node"
-# args = ["REPLACE_WITH_HOME/.cache/ruvnet-brain/kb/forge-mcp-all.mjs"]
+# args = ["{{HOME}}/.cache/ruvnet-brain/kb/forge-mcp-all.mjs"]
+# env = { KB_DIR = "{{HOME}}/.cache/ruvnet-brain/kb" }
 # enabled = true
 # startup_timeout_sec = 90
-# tool_timeout_sec = 120
+# tool_timeout_sec = 600
 
 # ---------------------------------------------------------------------------
 # Permissions — allow Ruflo CLI + helpers without re-prompting every turn
@@ -37,6 +58,7 @@ allow = [
   "Bash(npx -y ruflo*)",
   "Bash(node scripts/grok-team-bus.mjs*)",
   "MCPTool(ruflo__*)",
+  "MCPTool(ruvnet-brain__*)",
 ]
 
 # ---------------------------------------------------------------------------

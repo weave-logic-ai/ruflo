@@ -100,6 +100,26 @@ function walkCopy(
 }
 
 /**
+ * Expand {{HOME}} / $HOME path placeholders in template config so Brain MCP
+ * paths are machine-ready. Does not enable Brain — only rewrites placeholders.
+ * Uses {{HOME}} preferentially so prose comments mentioning $HOME stay intact.
+ */
+function materializeGrokConfig(dest: string): void {
+  if (!fs.existsSync(dest)) return;
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  if (!home) return;
+  let text = fs.readFileSync(dest, 'utf-8');
+  const before = text;
+  // Path-prefix only so prose like "expands {{HOME}} placeholders" stays intact
+  text = text.replaceAll('{{HOME}}/', `${home}/`);
+  // Path-quoted $HOME only (e.g. "$HOME/.cache/…")
+  text = text.replace(/(["'])\$HOME\//g, `$1${home}/`);
+  if (text !== before) {
+    fs.writeFileSync(dest, text, 'utf-8');
+  }
+}
+
+/**
  * Initialize Grok host surface in targetDir.
  */
 export function executeGrokInit(options: GrokInitOptions): GrokInitResult {
@@ -121,14 +141,22 @@ export function executeGrokInit(options: GrokInitOptions): GrokInitResult {
   }
 
   // .grok/config.toml
+  const configDest = path.join(targetDir, '.grok', 'config.toml');
   copyFile(
     path.join(tpl, 'config.toml'),
-    path.join(targetDir, '.grok', 'config.toml'),
+    configDest,
     force,
     filesCreated,
     filesSkipped,
     errors,
   );
+  if (filesCreated.includes(configDest) || (force && fs.existsSync(configDest))) {
+    try {
+      materializeGrokConfig(configDest);
+    } catch (e) {
+      errors.push(`${configDest}: materialize failed: ${(e as Error).message}`);
+    }
+  }
 
   // .grok/rules, agents, hooks, skills
   walkCopy(

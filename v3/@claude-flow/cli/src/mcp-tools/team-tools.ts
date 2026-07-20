@@ -544,8 +544,16 @@ export const teamTools: MCPTool[] = [
       const team = loadTeam(st.value);
       if (!team) return errResult(`Team "${st.value}" not found`);
 
+      // Include registered members and any mailbox dirs (pre-spawn handoffs).
       const mail: Record<string, number> = {};
-      for (const name of Object.keys(team.members || {})) {
+      const names = new Set(Object.keys(team.members || {}));
+      const root = mailboxRoot();
+      if (existsSync(root)) {
+        for (const ent of readdirSync(root, { withFileTypes: true })) {
+          if (ent.isDirectory()) names.add(ent.name);
+        }
+      }
+      for (const name of names) {
         mail[name] = listMailboxFiles(name).length;
       }
       return okResult({ action: 'status', team, pendingMail: mail });

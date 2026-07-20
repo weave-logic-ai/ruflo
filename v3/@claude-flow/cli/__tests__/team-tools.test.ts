@@ -69,6 +69,13 @@ describe('teamTools (ADR-320)', () => {
     });
     expect(send.success).toBe(true);
 
+    // Pre-spawn handoff: status should still count developer's mailbox
+    const statusEarly = await tool('team_status').handler({ team: 'demo' });
+    expect(statusEarly.success).toBe(true);
+    expect(
+      (statusEarly as { pendingMail: Record<string, number> }).pendingMail.developer,
+    ).toBeGreaterThanOrEqual(1);
+
     // register developer so broadcast targets work
     await tool('team_spawn').handler({
       team: 'demo',

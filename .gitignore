@@ -77,6 +77,8 @@
 .roo/
 .roomodes
 .ruv-swarm/
+# RuvNet Brain local meter/token ledger (written when Brain MCP runs from project cwd)
+.ruvnet-brain/
 .swarm/
 .swarm/memory.db*
 .turbo/
