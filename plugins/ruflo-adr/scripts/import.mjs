@@ -20,24 +20,36 @@
 // is hundreds of MCP round-trips. spawnSync over the CLI is materially faster
 // and avoids shell-quoting pitfalls in the ADR titles.
 
-import { basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { findAdrs, parseAdr } from './lib/parse-adrs.mjs';
+import {
+  adrRecordKey,
+  adrRecordValue,
+  edgeKey,
+  edgeValue,
+  memoryStoreArgs,
+  uniqueEdges,
+} from './lib/index-records.mjs';
 
-// ADR-100 / #1748 Issue 3 — CLI_CORE=1 routes to lite cli-core (~2s cold-cache).
-// Note: cli-core's JsonMemoryBackend overwrites by default, so the
-// "exists" / UNIQUE-constraint detection below collapses to "ok" under CLI_CORE.
-// Re-running import in CLI_CORE mode is therefore idempotent (records refreshed)
-// rather than incremental (records skipped). For incremental imports across
-// many runs, leave CLI_CORE unset.
-const CLI_PKG = process.env.CLI_CORE === '1'
-  ? '@claude-flow/cli-core@alpha'
-  : '@claude-flow/cli@latest';
+// #2781 (Jordi-Izquierdo-DDS): CLI_CORE=1 previously routed writes through
+// `@claude-flow/cli-core@alpha`, whose JsonMemoryBackend lives in a different
+// store than `@claude-flow/cli@latest`'s SQLite backend. The default
+// `ruflo memory search` reader hits the SQLite store, so setting CLI_CORE=1
+// for the ~2s cold-cache speedup silently made `import` succeed against a
+// store the default reader never looks at ("147/147 stored" but zero hits
+// in later searches). Unified on the default CLI so writer and reader
+// always agree — the CLI_CORE env var is now honored as read-only/logged
+// but no longer routes to a different package.
+if (process.env.CLI_CORE === '1') {
+  console.warn(
+    '[ruflo-adr] warning: CLI_CORE=1 is ignored — writing to the default ' +
+    "`@claude-flow/cli@latest` store so `ruflo memory search` can find the records (#2781).",
+  );
+}
 
 const ROOT = process.env.ADR_ROOT || process.cwd();
 
 function memoryStore(namespace, key, value) {
-  const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
   // #2474 Bug 1 (fatal): ADR titles like "ADR-005 — Repository …" contain
   // a U+2014 em-dash. \`npm exec\` runs argv validation BEFORE handing args
   // to the underlying bin, and \`commander\`-style argv with a non-ASCII
@@ -55,15 +67,13 @@ function memoryStore(namespace, key, value) {
   // `.swarm/memory.db` (the CLI resolves the db path relative to the
   // subprocess's cwd, not ADR_ROOT). Every memory subprocess call in this
   // plugin must pass `cwd: ROOT` so the scan root and the db root agree.
-  const r = spawnSync('npx', [
-    CLI_PKG, 'memory', 'store',
-    `--namespace=${namespace}`,
-    `--key=${key}`,
-    `--value=${valueStr}`,
-  ], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf-8', cwd: ROOT });
+  // #2660: pass --upsert explicitly. The importer owns stable logical keys,
+  // so re-running it must refresh changed ADRs and relationships in place.
+  // Do not depend on a CLI parser default for this data-integrity contract.
+  const r = spawnSync('npx', memoryStoreArgs(namespace, key, value),
+    { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf-8', cwd: ROOT });
   if (r.status !== 0) {
-    if (/UNIQUE constraint/i.test(r.stderr || r.stdout || '')) return 'exists';
-    return 'error: ' + (r.stderr || '').slice(0, 100);
+    return 'error: ' + (r.stderr || r.stdout || '').slice(0, 100);
   }
   return 'ok';
 }
@@ -74,25 +84,25 @@ const fmt = process.env.IMPORT_FORMAT || 'markdown';
 const files = findAdrs(ROOT);
 const adrs = files.map((f) => parseAdr(f, ROOT));
 const byId = new Map();
-const allEdges = [];
+const parsedEdges = [];
 for (const a of adrs) {
   byId.set(a.id, a);
-  allEdges.push(...a.links);
+  parsedEdges.push(...a.links);
 }
+const allEdges = uniqueEdges(parsedEdges);
 
 let storedRecords = 0, storedEdges = 0;
 const errors = [];
 if (!dryRun) {
   for (const a of adrs) {
-    const r = memoryStore('adr-patterns', `${a.id}::${basename(a.file, '.md')}`,
-      `${a.title} — ${a.context || '(no context)'}\n\nfile: ${a.file}\nstatus: ${a.status}\ndate: ${a.date}\ntags: ${a.tags.join(',')}`);
-    if (r === 'ok' || r === 'exists') storedRecords++;
+    const r = memoryStore('adr-patterns', adrRecordKey(a), adrRecordValue(a));
+    if (r === 'ok') storedRecords++;
     else errors.push(`${a.id} ${a.file}: ${r}`);
   }
   for (const e of allEdges) {
-    const key = `${e.relation}:${e.from}->${e.to}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const r = memoryStore('adr-edges', key, JSON.stringify({ ...e, capturedAt: new Date().toISOString() }));
-    if (r === 'ok' || r === 'exists') storedEdges++;
+    const r = memoryStore('adr-edges', edgeKey(e), edgeValue(e));
+    if (r === 'ok') storedEdges++;
+    else errors.push(`${edgeKey(e)}: ${r}`);
   }
 }
 

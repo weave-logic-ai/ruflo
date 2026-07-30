@@ -9,6 +9,11 @@ import { dirname, join, resolve } from 'path';
 import { type MCPTool, getProjectCwd } from './types.js';
 import { validateIdentifier, validateText, validatePath } from './validate-input.js';
 import { checkCommandLoop, recordCommandOutcome } from './tool-loop-guardrail.js';
+import {
+  buildLearnedRoutingPatterns,
+  type LearnedRoutingOutcome,
+  type LearnedRoutingPattern,
+} from '../services/learned-routing.js';
 
 // Real vector search functions - lazy loaded to avoid circular imports
 let searchEntriesFn: ((options: {
@@ -198,13 +203,14 @@ const ROUTING_STOPWORDS = new Set([
   'some','such','same','new','now','here','there','where','how','what','which','who',
 ]);
 
-interface RoutingOutcome {
-  task: string;
-  agent: string;
-  success: boolean;
-  quality: number;
+type RoutingOutcome = LearnedRoutingOutcome;
+
+interface RoutingPattern {
   keywords: string[];
-  timestamp: string;
+  agents: string[];
+  source?: 'static' | 'learned';
+  support?: number;
+  reliability?: number;
 }
 
 function extractKeywords(text: string): string[] {
@@ -232,6 +238,13 @@ function saveRoutingOutcomes(outcomes: RoutingOutcome[]): void {
     // Cap at 500 entries to bound file size
     const capped = outcomes.slice(-500);
     writeFileSync(ROUTING_OUTCOMES_PATH, JSON.stringify({ outcomes: capped }, null, 2));
+    // A long-lived MCP process must observe the new label on the next route.
+    // The prior singleton cache made the learned store inert until restart.
+    semanticRouter = null;
+    nativeVectorDb = null;
+    semanticRouterInitialized = false;
+    routerBackend = 'none';
+    TASK_PATTERN_EMBEDDINGS.clear();
   } catch { /* non-critical */ }
 }
 
@@ -240,29 +253,15 @@ function saveRoutingOutcomes(outcomes: RoutingOutcome[]): void {
  * Returns patterns in the same shape as TASK_PATTERNS so they can be
  * merged into both the native HNSW and pure-JS semantic routers.
  */
-function loadLearnedPatterns(): Record<string, { keywords: string[]; agents: string[] }> {
-  const outcomes = loadRoutingOutcomes();
-  const byAgent: Record<string, Set<string>> = {};
-  for (const o of outcomes) {
-    if (!o.success || !o.agent || !o.keywords?.length) continue;
-    if (!byAgent[o.agent]) byAgent[o.agent] = new Set();
-    for (const kw of o.keywords) byAgent[o.agent].add(kw);
-  }
-  const patterns: Record<string, { keywords: string[]; agents: string[] }> = {};
-  for (const [agent, kwSet] of Object.entries(byAgent)) {
-    patterns[`learned-${agent}`] = {
-      keywords: [...kwSet].slice(0, 50),
-      agents: [agent],
-    };
-  }
-  return patterns;
+function loadLearnedPatterns(): Record<string, LearnedRoutingPattern> {
+  return buildLearnedRoutingPatterns(loadRoutingOutcomes());
 }
 
 /**
  * Merge static TASK_PATTERNS with runtime-learned patterns.
  * Static patterns take precedence (learned patterns won't overwrite them).
  */
-function getMergedTaskPatterns(): Record<string, { keywords: string[]; agents: string[] }> {
+function getMergedTaskPatterns(): Record<string, RoutingPattern> {
   const merged = { ...TASK_PATTERNS };
   const learned = loadLearnedPatterns();
   for (const [key, pattern] of Object.entries(learned)) {
@@ -275,7 +274,7 @@ function getMergedTaskPatterns(): Record<string, { keywords: string[]; agents: s
 
 // ── Static task patterns (used by both native and pure-JS routers) ───
 
-const TASK_PATTERNS: Record<string, { keywords: string[]; agents: string[] }> = {
+const TASK_PATTERNS: Record<string, RoutingPattern> = {
   'security-task': {
     keywords: ['authentication', 'security', 'auth', 'password', 'encryption', 'vulnerability', 'cve', 'audit'],
     agents: ['security-architect', 'security-auditor', 'reviewer'],
@@ -339,7 +338,9 @@ async function getSemanticRouter() {
   // STEP 1: Try native VectorDb from @ruvector/router (HNSW-backed)
   // Note: Native VectorDb uses a persistent database file which can have lock issues
   // in concurrent environments. We try it first but fall back gracefully to pure JS.
-  try {
+  // Deterministic/test and lock-constrained environments may force the
+  // pure-JS router; production continues to prefer the native backend.
+  if (process.env.CLAUDE_FLOW_DISABLE_NATIVE_ROUTER !== '1') try {
     // Use createRequire for ESM compatibility with native modules
     const { createRequire } = await import('module');
     const require = createRequire(import.meta.url);
@@ -380,9 +381,15 @@ async function getSemanticRouter() {
     const { SemanticRouter } = await import('../ruvector/semantic-router.js');
     semanticRouter = new SemanticRouter({ dimension: 384 });
 
-    for (const [patternName, { keywords, agents }] of Object.entries(getMergedTaskPatterns())) {
+    for (const [patternName, { keywords, agents, source, support, reliability }] of Object.entries(getMergedTaskPatterns())) {
       const embeddings = keywords.map(kw => generateSimpleEmbedding(kw));
-      semanticRouter.addIntentWithEmbeddings(patternName, embeddings, { agents, keywords });
+      semanticRouter.addIntentWithEmbeddings(patternName, embeddings, {
+        agents,
+        keywords,
+        source: source ?? 'static',
+        support,
+        reliability,
+      });
 
       // Cache embeddings for keywords
       keywords.forEach((kw, i) => {
@@ -470,6 +477,9 @@ interface MemoryEntry {
   key: string;
   value: unknown;
   metadata?: Record<string, unknown>;
+  // #2797 — the post-task dual-write persists `namespace: 'patterns'`
+  // on routing-decision entries; the pattern counter reads it.
+  namespace?: string;
   storedAt: string;
   accessCount: number;
   lastAccessed: string;
@@ -505,7 +515,14 @@ function loadMemoryStore(): MemoryStore {
  */
 function getIntelligenceStatsFromMemory(): {
   trajectories: { total: number; successful: number };
-  patterns: { learned: number; categories: Record<string, number> };
+  patterns: {
+    learned: number;
+    successful: number;
+    failed: number;
+    unknown: number;
+    described: number;
+    categories: Record<string, number>;
+  };
   memory: { indexSize: number; totalAccessCount: number; memorySizeBytes: number };
   routing: { decisions: number; avgConfidence: number };
 } {
@@ -522,11 +539,22 @@ function getIntelligenceStatsFromMemory(): {
     (typeof e.value === 'object' && e.value !== null && (e.value as Record<string, unknown>).success === true)
   );
 
-  // Count patterns
+  // Count patterns (#2797). The original filter matched only
+  // `key.includes('pattern')` / `metadata.type==='pattern'` /
+  // `learned-*`, but NO writer in the codebase ever produces that
+  // shape — so Pattern Learning was permanently 0. The post-task
+  // dual-write (#2786 fix-2) persists learned patterns as
+  // `routing-decision:*` entries in the `patterns` namespace with
+  // `metadata.type: 'routing-decision'`. Those ARE the learned
+  // patterns the metric is meant to count, so include them: any entry
+  // whose namespace is `patterns`, plus the original shapes for
+  // forward-compatibility with a future explicit `pattern` writer.
   const patternEntries = entries.filter(e =>
     e.key.includes('pattern') ||
     e.metadata?.type === 'pattern' ||
-    e.key.startsWith('learned-')
+    e.key.startsWith('learned-') ||
+    e.namespace === 'patterns' ||
+    e.metadata?.type === 'routing-decision'
   );
 
   // Categorize patterns
@@ -535,6 +563,18 @@ function getIntelligenceStatsFromMemory(): {
     const category = (e.metadata?.category as string) || 'general';
     categories[category] = (categories[category] || 0) + 1;
   });
+  const successfulPatterns = patternEntries.filter(e => e.metadata?.success === true).length;
+  const failedPatterns = patternEntries.filter(e => e.metadata?.success === false).length;
+  const describedPatterns = patternEntries.filter(e => {
+    if (typeof e.metadata?.task === 'string' && e.metadata.task.trim()) return true;
+    try {
+      const value = typeof e.value === 'string' ? JSON.parse(e.value) : e.value;
+      return typeof (value as Record<string, unknown> | null)?.task === 'string' &&
+        Boolean(String((value as Record<string, unknown>).task).trim());
+    } catch {
+      return false;
+    }
+  }).length;
 
   // Count routing decisions
   const routingEntries = entries.filter(e =>
@@ -574,6 +614,10 @@ function getIntelligenceStatsFromMemory(): {
     },
     patterns: {
       learned: patternEntries.length,
+      successful: successfulPatterns,
+      failed: failedPatterns,
+      unknown: Math.max(0, patternEntries.length - successfulPatterns - failedPatterns),
+      described: describedPatterns,
       categories,
     },
     memory: {
@@ -1061,6 +1105,9 @@ export const hooksRoute: MCPTool = {
             score: 1 - r.score, // Native uses distance (lower is better), convert to similarity
             metadata: {
               agents: pattern?.agents || (patternName.startsWith('learned-') ? [patternName.slice(8)] : ['coder']),
+              source: pattern?.source ?? (patternName.startsWith('learned-') ? 'learned' : 'static'),
+              support: pattern?.support,
+              reliability: pattern?.reliability,
             },
           };
         });
@@ -1083,8 +1130,16 @@ export const hooksRoute: MCPTool = {
     let confidence: number;
     let matchedPattern = '';
 
-    if (semanticResult.length > 0 && semanticResult[0].score > 0.4) {
-      const topMatch = semanticResult[0];
+    const eligibleSemantic = semanticResult.find((match) => {
+      if (match.score <= 0.4) return false;
+      const learned = match.intent.startsWith('learned-') || match.metadata.source === 'learned';
+      if (!learned) return true;
+      return match.score >= 0.65
+        && Number(match.metadata.support ?? 0) >= 2
+        && Number(match.metadata.reliability ?? 0) >= 0.75;
+    });
+    if (eligibleSemantic) {
+      const topMatch = eligibleSemantic;
       agents = (topMatch.metadata.agents as string[]) || ['coder', 'researcher'];
       confidence = topMatch.score;
       matchedPattern = topMatch.intent;
@@ -1183,22 +1238,28 @@ export const hooksMetrics: MCPTool = {
     }
     const topAgent = Object.entries(agentCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
-    const successful = stats.trajectories.successful;
-    const total = stats.trajectories.total;
-    const failed = Math.max(0, total - successful);
-
     return {
       _real: true,
       _dataSource: 'intelligence-stats + routing-outcomes',
       period,
       patterns: {
         total: stats.patterns.learned,
-        successful,
-        failed,
+        successful: stats.patterns.successful,
+        failed: stats.patterns.failed,
+        unknown: stats.patterns.unknown,
+        described: stats.patterns.described,
+        descriptionCoverage: stats.patterns.learned > 0
+          ? stats.patterns.described / stats.patterns.learned
+          : null,
         avgConfidence: stats.routing.avgConfidence || null,
       },
       agents: {
-        routingAccuracy: stats.routing.avgConfidence || null,
+        // Confidence is a model self-score, not observed routing accuracy
+        // (#2809). Keep the old key as an explicit null for compatibility
+        // while exposing the truthful additive field.
+        routingAccuracy: null,
+        averageConfidence: stats.routing.avgConfidence || null,
+        outcomeSuccessRate: successRate,
         totalRoutes: stats.routing.decisions,
         topAgent,
       },
@@ -1207,7 +1268,7 @@ export const hooksMetrics: MCPTool = {
         successRate,
         avgRiskScore: null,
       },
-      _note: total === 0 && totalCommands === 0
+      _note: stats.patterns.learned === 0 && totalCommands === 0
         ? 'No metrics data collected yet. Run hooks_post-task / hooks_intelligence_trajectory-end / hooks_route to populate.'
         : undefined,
       lastUpdated: new Date().toISOString(),
@@ -1367,6 +1428,10 @@ export const hooksPostTask: MCPTool = {
       agent: { type: 'string', description: 'Agent that completed the task' },
       quality: { type: 'number', description: 'Quality score (0-1)' },
       task: { type: 'string', description: 'Task description text (used for learning keyword extraction)' },
+      duration: { type: 'number', description: 'Observed task duration in milliseconds (used by pheromone-adaptive topology)' },
+      latencyBudgetMs: { type: 'number', description: 'Latency budget used to normalize duration (default 60000ms)' },
+      consensusAlignment: { type: 'number', description: 'Agreement with accepted swarm consensus in [0,1] (default quality)' },
+      agentRole: { type: 'string', description: 'Role for role-local pheromone normalization (default agent)' },
       storeDecisions: { type: 'boolean', description: 'Also store routing decision in memory DB' },
       // ADR-147 P2: nested-subagent spawn-tree capture
       parentAgentId: { type: 'string', description: 'ID of the parent agent (from Claude Code\'s parent_agent_id OTel span tag / x-claude-code-parent-agent-id header). Omit for top-level work.' },
@@ -1406,6 +1471,7 @@ export const hooksPostTask: MCPTool = {
       const bridge = await import('../memory/memory-bridge.js');
       feedbackResult = await bridge.bridgeRecordFeedback({
         taskId,
+        task: (params.task as string) || undefined,
         success,
         quality,
         agent,
@@ -1497,6 +1563,42 @@ export const hooksPostTask: MCPTool = {
           });
         }
       } catch { /* non-critical */ }
+
+      // #2786 fix-2 — also mirror into the JSON memory store so
+      // `getIntelligenceStatsFromMemory()` (which reads .claude-flow/memory/store.json
+      // synchronously) counts this routing decision in the hooks_metrics dashboard.
+      // The AgentDB write above is authoritative for cross-session retrieval; this
+      // is just the counter surface the sync reader depends on.
+      try {
+        const key = `routing-decision:${taskId}`;
+        const store = loadMemoryStore();
+        store.entries[key] = {
+          key,
+          value: JSON.stringify({ task: taskText, agent, success, quality, keywords: outcomeKeywords }),
+          namespace: 'patterns',
+          createdAt: new Date().toISOString(),
+          metadata: { type: 'routing-decision', confidence: typeof quality === 'number' ? quality : undefined, agent, success },
+        } as any;
+        const memDir = resolve(MEMORY_DIR);
+        if (!existsSync(memDir)) mkdirSync(memDir, { recursive: true });
+        writeFileSync(getMemoryPath(), JSON.stringify(store, null, 2), 'utf-8');
+      } catch { /* non-critical */ }
+    }
+
+    let pheromone: unknown;
+    if (agent) {
+      try {
+        const { recordSwarmPheromoneSignal } = await import('./swarm-tools.js');
+        const observedDuration = Math.max(0, Number(params.duration ?? (Date.now() - startTime)));
+        const latencyBudgetMs = Math.max(1, Number(params.latencyBudgetMs ?? 60_000));
+        pheromone = recordSwarmPheromoneSignal({
+          agentId: agent,
+          role: String(params.agentRole ?? agent),
+          taskSuccess: success ? 1 : 0,
+          normalizedLatency: Math.max(0, Math.min(1, observedDuration / latencyBudgetMs)),
+          consensusAlignment: Math.max(0, Math.min(1, Number(params.consensusAlignment ?? quality))),
+        });
+      } catch { /* no active APSC swarm or optional path unavailable */ }
     }
 
     const duration = Date.now() - startTime;
@@ -1537,6 +1639,7 @@ export const hooksPostTask: MCPTool = {
         outcomePersisted,
       },
       quality,
+      pheromone,
       feedback: feedbackResult ? {
         recorded: feedbackResult.success,
         controller: feedbackResult.controller,
@@ -3188,7 +3291,7 @@ export const hooksIntelligenceStats: MCPTool = {
     } catch {
       memoryStats = {
         trajectories: { total: 0, successful: 0 },
-        patterns: { learned: 0, categories: {} },
+        patterns: { learned: 0, successful: 0, failed: 0, unknown: 0, described: 0, categories: {} },
         memory: { indexSize: 0, totalAccessCount: 0, memorySizeBytes: 0 },
         routing: { decisions: 0, avgConfidence: 0 },
       };

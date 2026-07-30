@@ -39,6 +39,17 @@ All ADRs are located in [`/v3/implementation/adrs/`](../../implementation/adrs/)
 | [ADR-308](ADR-308-cognitum-public-api-contract.md) | Cognitum Public API and Server Contract | Proposed |
 | [ADR-309](ADR-309-funnel-governance-privacy-ecosystem.md) | Funnel Governance, Privacy, and Ecosystem Policy | Proposed |
 | [ADR-310](ADR-310-funnel-rollout-measurement-emergency-controls.md) | Funnel Rollout, Measurement, and Emergency Controls | Proposed |
+| [ADR-320](ADR-320-mcp-composition-inspector-channel-guardrails.md) | MCP Tool Composition Inspector + Inter-Agent Channel Guardrails | Accepted |
+| [ADR-323](ADR-323-typed-memory-provenance.md) | Typed Memory Provenance in AgentDB (MemIR-style claim typing, corrects #2804's dream-cycle proposal) | Accepted |
+| [ADR-324](ADR-324-agentic-policy-engine-codex-swarm.md) | Agentic Policy Engine and Policy-Governed Codex Swarms | Accepted |
+| [ADR-325](ADR-325-claim-federation-zero-trust-capability-plane.md) | Claim Federation as a Zero-Trust Capability and Work-Ownership Plane | Proposed |
+| [ADR-326](ADR-326-cognitum-product-plane-claim-federation.md) | Cognitum Product-Plane Claim Federation Profile | Proposed |
+| [ADR-327](ADR-327-federated-concurrent-development-harness.md) | Federated Concurrent Development Harness | Proposed |
+| [ADR-328](ADR-328-cognitum-assisted-agent-learning.md) | Cognitum-Assisted Agent Learning Capability Plane | Proposed |
+| [ADR-329](ADR-329-ruflo-capability-brain-mcp-guidance.md) | Ruflo Capability Brain for MCP Guidance | Accepted |
+| [ADR-330](ADR-330-adaptive-pheromone-swarm-consensus.md) | Adaptive Pheromone Swarm Consensus | Accepted |
+| [ADR-331](ADR-331-project-local-flywheel-anchors.md) | Project-Local Flywheel Evaluation Anchors | Accepted |
+| [ADR-332](ADR-332-hermetic-release-verification-runtime-baseline.md) | Hermetic Release Verification and Supported Runtime Baseline | Accepted |
 
 ## Summary Documents
 

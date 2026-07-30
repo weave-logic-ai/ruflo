@@ -5,23 +5,70 @@
  * pays the ONNX cost only when actually running a tick. Never throws.
  */
 import { harnessLoopOptedIn } from './harness-worker.js';
-import { runFlywheelTick, type FlywheelDeps, type FlywheelResult, type RetrievalConfig, type AnchorTask } from './harness-flywheel.js';
+import {
+  DEFAULT_CONFIG,
+  retrievalPolicyNeighbors,
+  runFlywheelTick,
+  type FlywheelDeps,
+  type FlywheelResult,
+  type RetrievalConfig,
+} from './harness-flywheel.js';
 import { runFlywheelGeneration, checkServedChampionDrift, type GenerationResult, type GenerationDeps } from './harness-flywheel-generations.js';
-import { loadFrozenHumanEval } from './harness-frozen-eval.js';
+import { loadEffectiveFlywheelAnchor } from './harness-project-anchor.js';
+import {
+  proposeFlywheelCandidates,
+  type DarwinInvoker,
+  type ProposerMode,
+  type SafetyEnvelope,
+} from './flywheel-proposer.js';
+import { sha256Ref } from './flywheel-receipt.js';
+import { evaluatePolicyRequest } from './policy-runtime.js';
 
-/** The human-labeled ADR-081 anchor — the never-regress relevance set. */
-const ANCHOR: AnchorTask[] = [
-  ['how was the Opus model alias fixed', ['opus 4.8', 'opus alias', 'opus model alias', '#2232']],
-  ['self-learning wiring task-completed pretrain', ['self-learning', 'adr-074', 'self learning', '#2245', 'task-completed']],
-  ['deterministic codemod engine var-to-const', ['deterministic tier-1 codemod', 'adr-143', 'codemod', 'var-to-const']],
-  ['MCP server orphan leak parent-death', ['mcp orphan', 'mcp servers orphan', 'parent-death', '#2234', 'orphan on every claude']],
-  ['unified learning stats aggregator', ['unified learning-stats', 'adr-075', 'unified learning stats']],
-  ['structured distillation 4-field schema', ['structured distillation', 'adr-076', '4-field schema']],
-  ['SQL injection migrate.ts table identifier', ['sql injection', 'shell injection', 'migrate.ts', 'agentdb', 'cve']],
-  ['recall@k HNSW benchmark harness', ['hnsw', 'memory-recall', 'benchmark suite', 'recall@k', 'benchmark intelligence']],
-  ['Q-learning encoder keyword block', ['q-state encoder', 'route q-state', 'keyword block', '#2239', 'q-encoder']],
-  ['security hardening crypto random IDs', ['cwe-347', 'crypto.randomuuid', 'security fix', 'random id', 'crypto random']],
-].map(([q, labels], i) => ({ id: `q${String(i).padStart(2, '0')}`, input: { id: `q${String(i).padStart(2, '0')}`, q: q as string }, expected: labels as string[] }));
+/**
+ * The ADR-322 retrieval safety envelope.
+ *
+ * It MUST describe the policy surface the proposer actually emits —
+ * `RetrievalConfig`. The v1 envelope allowed `topK`/`rerank`, which are
+ * `neural_patterns` search-call arguments not representable in
+ * `RetrievalConfig`, while omitting the three weight axes that
+ * `retrievalPolicyNeighbors` does mutate. Because `validateCandidate` checks
+ * EVERY key of a candidate policy (candidates are full snapshots, not deltas),
+ * that drift made every locally-proposed candidate inadmissible and the local
+ * evaluation path unreachable — no receipt, therefore no promotion, ever.
+ *
+ * Every axis carries a finite bound: an allowed key WITHOUT bounds is an
+ * unbounded key, because `validateCandidate` applies bounds only when present.
+ * A Darwin proposer could otherwise submit arbitrary weights on the three axes.
+ *
+ * Exported so tests can bind the REAL envelope to the REAL proposer; the drift
+ * survived review precisely because no test wired those two together.
+ */
+export function retrievalSafetyEnvelope(ref?: string): SafetyEnvelope {
+  const allowedPolicyKeys = ['alpha', 'subjectWeight', 'mmrLambda', 'bodyWeight', 'typePenaltyFactor'];
+  const numericBounds = {
+    alpha: { min: 0.1, max: 0.9 },
+    subjectWeight: { min: 0.1, max: 10 },
+    mmrLambda: { min: 0.3, max: 0.9 },
+    bodyWeight: { min: 0.1, max: 10 },
+    typePenaltyFactor: { min: 0.1, max: 10 },
+  };
+  return {
+    ref: ref ?? sha256Ref(JSON.stringify({
+      schema: 'ruflo.retrieval-safety-envelope/v2',
+      allowedPolicyKeys,
+      numericBounds,
+    })),
+    allowedPolicyKeys,
+    numericBounds,
+    // Retrieval evaluations are local and report zero provider spend today;
+    // finite ceilings make any future resource evidence fail closed.
+    maxP95LatencyMicros: 5_000_000,
+    maxCostMicrosPerTask: 10_000,
+    maxTokensPerTask: 100_000,
+    maxFailureRate: 0.01,
+    maxEvaluationCostMicros: 1_000_000,
+  };
+}
 
 /**
  * Run one live flywheel tick against `projectRoot`. Opt-in + $0 default: with
@@ -29,14 +76,82 @@ const ANCHOR: AnchorTask[] = [
  */
 export async function runFlywheelWorker(
   projectRoot: string,
-  opts: { sample?: number; optInOverride?: boolean; now?: number } = {},
+  opts: {
+    sample?: number;
+    optInOverride?: boolean;
+    now?: number;
+    receiptPrivateKeyPem?: string;
+    receiptPublicKeyPem?: string;
+    lineageId?: string;
+    evaluationRunId?: string;
+    safetyEnvelopeRef?: string;
+    proposer?: ProposerMode;
+    darwinInvoker?: DarwinInvoker;
+    allowSubstitutionPromotion?: boolean;
+    maxConcurrency?: number;
+    evaluationTimeoutMs?: number;
+    anchorPath?: string;
+    anchorHash?: string;
+    anchorManifestPath?: string;
+  } = {},
 ): Promise<FlywheelResult> {
   try {
     if (!(opts.optInOverride ?? harnessLoopOptedIn())) return { ran: false, reason: 'opt-in required (RUFLO_HARNESS_LOOP=1)' };
+    const policy = await evaluatePolicyRequest({
+      identity: { id: process.env.CLAUDE_FLOW_PRINCIPAL_ID ?? 'metaharness-local', type: 'agent', roles: ['optimizer'] },
+      action: {
+        type: 'metaharness.flywheel.run',
+        resource: projectRoot,
+        environment: 'development',
+        concurrency: opts.maxConcurrency ?? 2,
+      },
+    }, projectRoot);
+    if (policy.enforcedOutcome !== 'allowed') {
+      return { ran: false, reason: `policy-${policy.enforcedOutcome}:${policy.reason}; receipt=${policy.receiptId}` };
+    }
     const neural = await import('../mcp-tools/neural-tools.js');
     const applier = await import('../config/harness-feedback-applier.js');
     const tool = neural.neuralTools.find((t) => t.name === 'neural_patterns');
     if (!tool) return { ran: false, reason: 'neural_patterns tool unavailable' };
+
+    const baseline: RetrievalConfig = {
+      ...DEFAULT_CONFIG,
+      ...((applier.activeChampion(projectRoot)?.params as Partial<RetrievalConfig>) ?? {}),
+    };
+    const safetyEnvelope = retrievalSafetyEnvelope(opts.safetyEnvelopeRef);
+    const anchor = loadEffectiveFlywheelAnchor(projectRoot, {
+      anchorPath: opts.anchorPath ?? process.env.RUFLO_FLYWHEEL_ANCHOR_PATH,
+      anchorHash: opts.anchorHash ?? process.env.RUFLO_FLYWHEEL_ANCHOR_HASH,
+      manifestPath: opts.anchorManifestPath ?? process.env.RUFLO_FLYWHEEL_ANCHOR_MANIFEST,
+    });
+    // CLI flag opts.proposer takes precedence over RUFLO_FLYWHEEL_PROPOSER.
+    const proposerMode = opts.proposer
+      ?? ((process.env.RUFLO_FLYWHEEL_PROPOSER as ProposerMode | undefined) ?? 'auto');
+    if (!['auto', 'local', 'darwin'].includes(proposerMode)) {
+      return { ran: false, reason: `invalid proposer mode: ${proposerMode}` };
+    }
+    const archive = await proposeFlywheelCandidates({
+      mode: proposerMode,
+      baselinePolicy: baseline as unknown as Record<string, unknown>,
+      safetyEnvelope,
+      seed: opts.now ?? Date.now(),
+      localProposer: () => retrievalPolicyNeighbors(baseline).map((policy) => ({
+        policy: policy as unknown as Record<string, unknown>,
+        resources: {
+          p95LatencyMicros: 0,
+          costMicrosPerTask: 0,
+          tokensPerTask: 0,
+          failureRate: 0,
+          evaluationCostMicros: 0,
+        },
+      })),
+      darwinInvoker: opts.darwinInvoker,
+      allowSubstitutionPromotion: opts.allowSubstitutionPromotion,
+      maxConcurrency: Math.max(1, Math.min(opts.maxConcurrency ?? 2, 8)),
+      maxWallTimeMs: opts.evaluationTimeoutMs ?? 120_000,
+    });
+    const candidatePolicies = archive.paretoCandidates.map((candidate) => candidate.policy as unknown as RetrievalConfig);
+    if (!candidatePolicies.length) return { ran: false, reason: 'proposer archive contained no admissible candidates' };
 
     const deps: FlywheelDeps = {
       getPatterns: () => neural.getStorePatterns(),
@@ -44,10 +159,22 @@ export async function runFlywheelWorker(
         const r = await tool.handler({ action: 'search', query, mode: 'hybrid', limit: 5, rerank: false, ...cfg }) as { results?: Array<{ id?: string; name?: string }> };
         return (r.results || []).slice(0, 5).map((m) => ({ id: m?.id ?? '', name: m?.name ?? '' }));
       },
-      anchorTasks: ANCHOR,
-      activeParams: () => (applier.activeChampion(projectRoot)?.params as Partial<RetrievalConfig>) ?? null,
+      anchorTasks: anchor.tasks,
+      anchorRef: anchor.anchorRef,
+      activeParams: () => baseline,
       sample: opts.sample ?? 40,
       now: opts.now,
+      receiptPrivateKeyPem: opts.receiptPrivateKeyPem,
+      receiptPublicKeyPem: opts.receiptPublicKeyPem,
+      lineageId: opts.lineageId,
+      evaluationRunId: opts.evaluationRunId,
+      safetyEnvelopeRef: safetyEnvelope.ref,
+      requestedProposer: archive.requestedProposer,
+      effectiveProposer: archive.effectiveProposer,
+      proposerSubstitution: archive.proposerSubstitution,
+      candidatePolicies,
+      maxConcurrency: Math.max(1, Math.min(opts.maxConcurrency ?? 2, 8)),
+      evaluationTimeoutMs: opts.evaluationTimeoutMs,
     };
     return await runFlywheelTick(projectRoot, deps);
   } catch (e) {
@@ -65,23 +192,37 @@ export async function runFlywheelWorker(
  */
 export async function runFlywheelGenerationWorker(
   projectRoot: string,
-  opts: { sample?: number; optInOverride?: boolean; now?: number } = {},
+  opts: {
+    sample?: number;
+    optInOverride?: boolean;
+    now?: number;
+    anchorPath?: string;
+    anchorHash?: string;
+    anchorManifestPath?: string;
+  } = {},
 ): Promise<GenerationResult> {
   try {
     if (!(opts.optInOverride ?? harnessLoopOptedIn())) return { ran: false, reason: 'opt-in required (RUFLO_HARNESS_LOOP=1)', generation: 0 };
     const neural = await import('../mcp-tools/neural-tools.js');
     const tool = neural.neuralTools.find((t) => t.name === 'neural_patterns');
     if (!tool) return { ran: false, reason: 'neural_patterns tool unavailable', generation: 0 };
-    // Load the FROZEN, hashed, public human eval set (throws if it has drifted).
-    const frozen = loadFrozenHumanEval();
+    const anchor = loadEffectiveFlywheelAnchor(projectRoot, {
+      anchorPath: opts.anchorPath ?? process.env.RUFLO_FLYWHEEL_ANCHOR_PATH,
+      anchorHash: opts.anchorHash ?? process.env.RUFLO_FLYWHEEL_ANCHOR_HASH,
+      manifestPath: opts.anchorManifestPath ?? process.env.RUFLO_FLYWHEEL_ANCHOR_MANIFEST,
+    });
     const deps: GenerationDeps = {
       getPatterns: () => neural.getStorePatterns(),
       search: async (query, cfg: RetrievalConfig) => {
         const r = await tool.handler({ action: 'search', query, mode: 'hybrid', limit: 5, rerank: false, ...cfg }) as { results?: Array<{ id?: string; name?: string }> };
         return (r.results || []).slice(0, 5).map((m) => ({ id: m?.id ?? '', name: m?.name ?? '' }));
       },
-      anchorTasks: frozen.tasks,
-      humanEvalHash: frozen.corpusHash,
+      anchorTasks: anchor.tasks.map((task) => ({
+        id: task.id,
+        q: task.input.q,
+        labels: task.expected,
+      })),
+      humanEvalHash: anchor.anchorRef,
       sample: opts.sample ?? 120,
       now: opts.now ?? Date.now(),
     };

@@ -7,7 +7,7 @@
 
 import type { Command, CommandContext, CommandResult } from '../types.js';
 import { output } from '../output.js';
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync, openSync, readSync, closeSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createHash } from 'crypto';
@@ -139,8 +139,8 @@ async function checkConfigFile(): Promise<HealthCheck> {
 
 // Check daemon status
 /**
- * #2448 — Detect the runaway `npx @claude-flow/cli@latest` statusLine / hook
- * commands left over in `.claude/settings.json` from pre-#2337 installs.
+ * #2448 / #2677 — Detect runaway `npx @claude-flow/cli@latest` commands
+ * left over in `.claude/settings.json` from pre-#2337 installs.
  *
  * These fire on every Claude Code event (statusLine refires every few hundred
  * ms, hooks fire per tool-use), each spawning a cold Node process + npm
@@ -157,7 +157,9 @@ async function checkStaleSettingsNpx(): Promise<HealthCheck> {
   // Same regex pattern the executor migration uses — kept in sync. Flag-list
   // repetition bounded at 10 (CodeQL js/redos — unbounded `*` here is
   // exponential-backtracking-prone on a crafted settings.json).
-  const BROKEN_RE = /npx\s+(?:--?\S+\s+){0,10}@?claude-flow\/cli@latest\s+hooks\s+(?:statusline|\S+)/;
+  // Every subcommand incurs the same cold npm process/registry cost. The
+  // previous `hooks` literal missed `memory`, `daemon`, `swarm`, etc.
+  const BROKEN_RE = /npx\s+(?:--?\S+\s+){0,10}@?claude-flow\/cli@latest\s+\S+/;
 
   // Look in both project-local and home-dir settings.
   const candidates = [
@@ -238,6 +240,16 @@ async function checkDaemonStatus(): Promise<HealthCheck> {
 }
 
 // Check memory database
+//
+// #2737: renamed the reported row from "Memory Database" to "Memory Database
+// Presence" — this check is existsSync()+statSync() ONLY, it never opens the
+// file or queries it, so it PASSES for any file that exists and can be
+// stat'd, corrupt or not. It was the ONLY memory probe in the default
+// `allChecks` run (the real integrity checks were --component memory only),
+// so a corrupt .swarm/memory.db could sail through a bare `doctor` run as
+// "healthy". The name change makes the check's actual scope honest; the
+// behavior below is unchanged. See checkMemoryStructuralIntegrity below for
+// the new default-run check that actually opens the file.
 async function checkMemoryDatabase(): Promise<HealthCheck> {
   // Authoritative path comes from `getMemoryRoot()` (honors
   // `CLAUDE_FLOW_MEMORY_PATH`, claude-flow.config.json's `memory.persistPath`,
@@ -264,14 +276,14 @@ async function checkMemoryDatabase(): Promise<HealthCheck> {
       try {
         const stats = statSync(dbPath);
         const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
-        return { name: 'Memory Database', status: 'pass', message: `${dbPath} (${sizeMB} MB)` };
+        return { name: 'Memory Database Presence', status: 'pass', message: `${dbPath} (${sizeMB} MB) — existence/size only, not a health check (see Memory Structural Integrity)` };
       } catch {
-        return { name: 'Memory Database', status: 'warn', message: `${dbPath} (unable to stat)` };
+        return { name: 'Memory Database Presence', status: 'warn', message: `${dbPath} (unable to stat)` };
       }
     }
   }
 
-  return { name: 'Memory Database', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
+  return { name: 'Memory Database Presence', status: 'warn', message: 'Not initialized', fix: 'claude-flow memory configure --backend hybrid' };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -280,18 +292,21 @@ async function checkMemoryDatabase(): Promise<HealthCheck> {
 // The existing `checkMemoryDatabase` above asserts existence + statability
 // only, so it CANNOT distinguish a healthy DB from a 99.97%-empty or
 // SQLite-malformed one. Stuinfla reported both cases live (81-store fleet).
-// The three checks below layer functional assertions on top, ordered so
+// The checks below layer functional assertions on top, ordered so
 // the earliest chain-break is always the first red the user sees:
 //   1. Integrity          — can sql.js open it AND does PRAGMA integrity_check pass?
 //   2. Content            — do most memory_entries rows carry non-empty content?
 //   3. Embedding coverage — do most rows have a vector? (unembedded rows are
 //                           both unrecallable AND undistillable per ADR-174)
+//   6. Reflexion coverage — can episodes participate in retrieveRelevant's
+//                           required episode_embeddings INNER JOIN?
+//      Feedback critiques — do execution-tier episodes carry a real lesson?
 // Ordering matters: content ratio is meaningless on a DB that can't open;
 // embedding coverage is meaningless on rows with no content. First red wins.
 //
-// Recall probe (stuinfla check 4) requires actual write+search+delete round
-// trips through the CLI's own memory pipeline — deferred to a follow-up PR
-// to keep this one purely additive and safe.
+// Recall probe (stuinfla check 4) still requires an isolated write+search+
+// delete round trip through the CLI's own memory pipeline. It remains separate
+// because doctor otherwise stays read-only.
 //
 // Design rules (also from stuinfla's report):
 //   - "A check that cannot fail protects nothing" — every check has a
@@ -329,44 +344,277 @@ async function tryOpenSqlJs(dbPath: string): Promise<any | null> {
   } catch { return null; }
 }
 
-// Check 1 — sql.js can open it AND PRAGMA integrity_check returns 'ok'.
-// Two fail modes handled distinctly per "UNKNOWN is never PASS":
-//   - Open fails: warn ("cannot open; encrypted DB or corrupt — doctor
-//     can't distinguish from this side")
-//   - Open succeeds but pragma != 'ok': fail (definite corruption)
+// ── #2737 shared helpers: encryption-at-rest carve-out ─────────────────────
+//
+// "file is not a database" / "malformed" from sql.js or better-sqlite3 is
+// EXACTLY the signal a legitimately RFE1-encrypted-at-rest memory.db also
+// produces when opened without decrypting (ADR-096). Before either the new
+// default-run check or the strengthened checkMemoryIntegrity below concludes
+// "malformed = fail", they sniff for the RFE1 magic using the SAME detector
+// checkEncryptionAtRest uses (isEncryptedBlob), so the two checks can never
+// disagree about what counts as "encrypted".
+
+/** Read just the first `len` bytes of a file without loading the whole file
+ * into memory — a multi-GB memory.db shouldn't get fully buffered just to
+ * check a 4-byte magic. Returns fewer bytes (or empty) when the file is
+ * shorter than `len`; isEncryptedBlob() correctly treats a too-short blob
+ * as "not encrypted", so callers don't need to special-case that. */
+function readHeaderBytes(path: string, len: number): Buffer {
+  const fd = openSync(path, 'r');
+  try {
+    const buf = Buffer.alloc(len);
+    const bytesRead = readSync(fd, buf, 0, len, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+// RFE1 wire format is magic(4) + iv(12) + ciphertext(N) + tag(16); the
+// shortest possible blob is 32 bytes. 64 gives headroom without importing
+// vault.ts's private MIN_BLOB_LEN constant.
+const ENCRYPTION_SNIFF_LEN = 64;
+
+/** True iff `dbPath` is a legitimately RFE1-encrypted-at-rest file. A read
+ * failure (permissions, races) is treated as "not encrypted" — callers
+ * still hit their own open/query error handling right after, so nothing
+ * gets silently swallowed. */
+function isMemoryDbEncryptedAtRest(dbPath: string): boolean {
+  try {
+    return isEncryptedBlob(readHeaderBytes(dbPath, ENCRYPTION_SNIFF_LEN));
+  } catch {
+    return false;
+  }
+}
+
+// #2737 part 1 — bare `doctor` (no --component flag) never actually opened
+// memory.db: checkMemoryDatabase above is existsSync()+statSync() only, so
+// it PASSES on any file that exists and can be stat'd, corrupt or not, and
+// it was the ONLY memory probe `allChecks` ran. The real integrity checks
+// (checkMemoryIntegrity/Content/EmbeddingCoverage below) were, and remain,
+// --component memory only.
+//
+// This is a NEW, cheaper, native check added to the default `allChecks` run
+// (not a replacement for the deep trio):
+//   - better-sqlite3 (native) instead of sql.js: it's WAL-aware because
+//     SQLite itself resolves any sibling -wal file next to the main image;
+//     sql.js is WAL-blind — tryOpenSqlJs() above only readFileSync()s the
+//     main file and hands the raw bytes to the WASM build, so any
+//     committed-but-not-checkpointed rows sitting in a -wal file are
+//     invisible to it.
+//   - PRAGMA quick_check, not integrity_check: per sqlite.org, quick_check
+//     "is like integrity_check except that it does not verify UNIQUE
+//     constraints and does not verify that index content matches table
+//     content" — bounded enough to run unconditionally on every bare
+//     `doctor` call. The full integrity_check (with those extra
+//     cross-checks) is what the strengthened checkMemoryIntegrity below
+//     runs when better-sqlite3 is available.
+// Explicitly labeled "structural-only" in both the row name and every
+// message so nobody mistakes this cheap default-run probe for the deeper
+// --component memory one.
+async function checkMemoryStructuralIntegrity(): Promise<HealthCheck> {
+  const NAME = 'Memory Structural Integrity (quick_check)';
+  const dbPath = await resolveMemoryDbPath();
+  if (!dbPath) {
+    // Not-yet-initialized project — Memory Database Presence above already
+    // surfaces this; "UNKNOWN is never PASS" still applies, so this stays a
+    // warn rather than a silent skip, but doesn't pile on a second red for
+    // the same root cause.
+    return {
+      name: NAME,
+      status: 'warn',
+      message: 'no memory.db found (see Memory Database Presence above) — structural-only check skipped',
+    };
+  }
+
+  // Encryption-at-rest carve-out (#2737 part 3) — see helpers above.
+  if (isMemoryDbEncryptedAtRest(dbPath)) {
+    return {
+      name: NAME,
+      status: 'warn',
+      message: `${dbPath} — RFE1-encrypted at rest; structural-only check can't run without decrypting (expected, not corruption — see Encryption at Rest)`,
+    };
+  }
+
+  let Database: any;
+  try {
+    Database = ((await import('better-sqlite3')) as any).default;
+  } catch {
+    return {
+      name: NAME,
+      status: 'warn',
+      message: `${dbPath} — better-sqlite3 not installed; structural-only check skipped (optional native module)`,
+      fix: 'npm install better-sqlite3  (enables WAL-aware structural checks on every `doctor` run)',
+    };
+  }
+
+  let db: any;
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  } catch (e) {
+    const msg = (e as Error).message || String(e);
+    // Encryption already ruled out above — an unencrypted file
+    // better-sqlite3 can't even open is definitive corruption.
+    // #2737 part 3: fail, not warn.
+    return {
+      name: NAME,
+      status: 'fail',
+      message: `${dbPath} — better-sqlite3 failed to open: ${msg} (unencrypted; definitively malformed) [structural-only]`,
+      fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
+    };
+  }
+
+  try {
+    const rows = db.pragma('quick_check') as Array<Record<string, unknown>>;
+    const values = rows.map((r) => String(Object.values(r)[0]));
+    if (values.length === 1 && values[0] === 'ok') {
+      return {
+        name: NAME,
+        status: 'pass',
+        message: `${dbPath} — PRAGMA quick_check: ok [structural-only, native + WAL-aware]`,
+      };
+    }
+    return {
+      name: NAME,
+      status: 'fail',
+      message: `${dbPath} — PRAGMA quick_check: ${values.slice(0, 3).join('; ')}${values.length > 3 ? ` (+${values.length - 3} more)` : ''} [structural-only]`,
+      fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
+    };
+  } catch (e) {
+    const msg = (e as Error).message || String(e);
+    // Encryption ruled out above; DB opened but the pragma itself threw —
+    // still definitive, unencrypted breakage. Fail, not warn.
+    return {
+      name: NAME,
+      status: 'fail',
+      message: `${dbPath} — quick_check probe threw: ${msg} (unencrypted) [structural-only]`,
+      fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
+    };
+  } finally {
+    try { db.close(); } catch { /* best-effort */ }
+  }
+}
+
+// Check 1 (--component memory, deep path) — #2737 part 2 strengthens this:
+// prefer native better-sqlite3 PRAGMA integrity_check (adds index↔table
+// cross-checking + UNIQUE verification that quick_check above deliberately
+// skips, and is WAL-aware — see checkMemoryStructuralIntegrity's comment)
+// when better-sqlite3 is available, falling back to the original sql.js
+// probe when it's not. The sql.js fallback is main-image-only (WAL-blind);
+// its message says so explicitly so operators know its limits.
+//
+// #2737 part 3: with the encryption carve-out applied up front on BOTH
+// paths, a "file is not a database" / "malformed" result is now definitive,
+// unencrypted corruption in every branch below — fail, not warn (the
+// previous version treated this as an ambiguous warn because it couldn't
+// tell corruption from encryption; that ambiguity is what the carve-out
+// resolves).
 async function checkMemoryIntegrity(): Promise<HealthCheck> {
   const dbPath = await resolveMemoryDbPath();
-  if (!dbPath) return { name: 'Memory Integrity', status: 'warn', message: 'no memory.db found (see Memory Database check above)' };
-  const db = await tryOpenSqlJs(dbPath);
-  if (!db) {
+  if (!dbPath) return { name: 'Memory Integrity', status: 'warn', message: 'no memory.db found (see Memory Database Presence check above)' };
+
+  if (isMemoryDbEncryptedAtRest(dbPath)) {
     return {
       name: 'Memory Integrity',
       status: 'warn',
-      message: `${dbPath} — sql.js can't open (encrypted DB or corrupt; doctor can't tell which from outside)`,
-      fix: 'if encrypted: expected. if not: back up + `claude-flow memory init --force` to rebuild',
+      message: `${dbPath} — RFE1-encrypted at rest; integrity check can't run without decrypting (expected, not corruption — see Encryption at Rest)`,
+    };
+  }
+
+  // Prefer native better-sqlite3 (WAL-aware, full integrity_check). Module
+  // load is isolated in its own try/catch so ONLY "not installed" falls
+  // through to the sql.js fallback below — once the module loaded, any
+  // open/query failure is resolved (fail) right here, not silently
+  // reclassified as "sql.js fallback, main-image-only" by an outer catch.
+  let Database: any;
+  try {
+    Database = ((await import('better-sqlite3')) as any).default;
+  } catch {
+    Database = null; // not installed — fall through to the sql.js fallback below.
+  }
+
+  if (Database) {
+    let db: any;
+    try {
+      db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    } catch (e) {
+      const msg = (e as Error).message || String(e);
+      return {
+        name: 'Memory Integrity',
+        status: 'fail',
+        message: `${dbPath} — better-sqlite3 failed to open: ${msg} (unencrypted; definitively malformed) [native, WAL-aware]`,
+        fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
+      };
+    }
+    try {
+      const rows = db.pragma('integrity_check') as Array<Record<string, unknown>>;
+      const values = rows.map((r) => String(Object.values(r)[0]));
+      if (values.length === 1 && values[0] === 'ok') {
+        return { name: 'Memory Integrity', status: 'pass', message: `${dbPath} — PRAGMA integrity_check: ok [native, WAL-aware]` };
+      }
+      return {
+        name: 'Memory Integrity',
+        status: 'fail',
+        message: `${dbPath} — PRAGMA integrity_check: ${values.slice(0, 3).join('; ')}${values.length > 3 ? ` (+${values.length - 3} more)` : ''} [native, WAL-aware]`,
+        fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
+      };
+    } catch (e) {
+      // DB opened but the pragma itself threw — still definitive,
+      // unencrypted breakage (encryption ruled out above). Fail, not warn,
+      // and NOT a fall-through to the sql.js fallback: better-sqlite3 IS
+      // installed and just gave us the answer.
+      const msg = (e as Error).message || String(e);
+      return {
+        name: 'Memory Integrity',
+        status: 'fail',
+        message: `${dbPath} — integrity_check probe threw: ${msg} (unencrypted; definitively malformed) [native, WAL-aware]`,
+        fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
+      };
+    } finally {
+      try { db.close(); } catch { /* best-effort */ }
+    }
+  }
+
+  // Fallback: sql.js — main-image-only (WAL-blind). tryOpenSqlJs()
+  // readFileSync()s the base file directly, so any committed-but-not-
+  // checkpointed rows sitting in a sibling -wal file are invisible here.
+  // Install better-sqlite3 for the WAL-aware path above.
+  const db = await tryOpenSqlJs(dbPath);
+  if (!db) {
+    // Encryption already ruled out above — an unencrypted file sql.js can't
+    // even open is definitive corruption too.
+    return {
+      name: 'Memory Integrity',
+      status: 'fail',
+      message: `${dbPath} — sql.js can't open (unencrypted; definitively malformed) [main-image-only fallback — install better-sqlite3 for WAL-aware checking]`,
+      fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
     };
   }
   try {
     const res = db.exec('PRAGMA integrity_check');
     const rows: string[] = res[0]?.values?.map((v: any[]) => String(v[0])) ?? [];
     if (rows.length === 1 && rows[0] === 'ok') {
-      return { name: 'Memory Integrity', status: 'pass', message: `${dbPath} — PRAGMA integrity_check: ok` };
+      return { name: 'Memory Integrity', status: 'pass', message: `${dbPath} — PRAGMA integrity_check: ok [main-image-only fallback — sql.js can't see WAL-only data; install better-sqlite3 for full coverage]` };
     }
     return {
       name: 'Memory Integrity',
       status: 'fail',
-      message: `${dbPath} — PRAGMA integrity_check: ${rows.slice(0, 3).join('; ')}${rows.length > 3 ? ` (+${rows.length - 3} more)` : ''}`,
+      message: `${dbPath} — PRAGMA integrity_check: ${rows.slice(0, 3).join('; ')}${rows.length > 3 ? ` (+${rows.length - 3} more)` : ''} [main-image-only fallback]`,
       fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
     };
   } catch (e) {
     const msg = (e as Error).message || String(e);
-    const encryptedOrCorrupt = msg.includes('file is not a database') || msg.includes('malformed');
+    const definitivelyMalformed = msg.includes('file is not a database') || msg.includes('malformed');
+    // Encryption already ruled out above, so — matched pattern or not —
+    // this is a query refusal on a file we KNOW isn't RFE1-encrypted.
+    // #2737 part 3: fail, not warn.
     return {
       name: 'Memory Integrity',
-      status: 'warn',
-      message: encryptedOrCorrupt
-        ? `${dbPath} — DB refused query: ${msg} (encrypted DB or corruption; see Memory Integrity above)`
-        : `${dbPath} — probe threw: ${msg}`,
+      status: 'fail',
+      message: definitivelyMalformed
+        ? `${dbPath} — DB refused query: ${msg} (unencrypted; definitively malformed) [main-image-only fallback]`
+        : `${dbPath} — probe threw: ${msg} (unencrypted — encryption ruled out above) [main-image-only fallback]`,
+      fix: 'back up .swarm/memory.db then `claude-flow memory init --force`',
     };
   } finally { try { db.close(); } catch { /* best-effort */ } }
 }
@@ -476,6 +724,92 @@ async function checkMemoryEmbeddingCoverage(): Promise<HealthCheck> {
         ? `${dbPath} — DB refused query: ${msg} (encrypted DB or corruption; see Memory Integrity above)`
         : `${dbPath} — probe threw: ${msg}`,
     };
+  } finally { try { db.close(); } catch { /* best-effort */ } }
+}
+
+// #2677 check 6 — ReflexionMemory.retrieveRelevant() INNER JOINs episodes to
+// episode_embeddings. A populated episodes table with an empty/missing partner
+// table is therefore not degraded recall; it is structurally zero recall.
+async function checkMemoryReflexionCoverage(): Promise<HealthCheck> {
+  const dbPath = await resolveMemoryDbPath();
+  if (!dbPath) return { name: 'Memory Reflexion Coverage', status: 'warn', message: 'no memory.db found' };
+  const db = await tryOpenSqlJs(dbPath);
+  if (!db) return { name: 'Memory Reflexion Coverage', status: 'warn', message: 'DB unreadable (see Memory Integrity)' };
+  try {
+    const tables = new Set<string>(
+      db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('episodes','episode_embeddings')")
+        [0]?.values?.map((v: any[]) => String(v[0])) ?? [],
+    );
+    if (!tables.has('episodes')) {
+      return { name: 'Memory Reflexion Coverage', status: 'warn', message: 'episodes table absent — AgentDB Reflexion schema not initialized' };
+    }
+    const episodes = Number(db.exec('SELECT count(*) FROM episodes')[0]?.values?.[0]?.[0] ?? 0);
+    if (episodes === 0) {
+      return { name: 'Memory Reflexion Coverage', status: 'warn', message: `${dbPath} — 0 episodes (Reflexion has not been exercised)` };
+    }
+    if (!tables.has('episode_embeddings')) {
+      return {
+        name: 'Memory Reflexion Coverage',
+        status: 'fail',
+        message: `${dbPath} — episode embeddings 0/${episodes} (0.00%); retrieveRelevant() cannot return rows`,
+        fix: 'run `claude-flow memory distill run`; current distillation creates/backfills episode_embeddings',
+      };
+    }
+    const embedded = Number(db.exec(
+      'SELECT count(*) FROM episodes e JOIN episode_embeddings ee ON ee.episode_id=e.id',
+    )[0]?.values?.[0]?.[0] ?? 0);
+    const ratio = embedded / episodes;
+    const detail = `episode embeddings ${embedded}/${episodes} (${(ratio * 100).toFixed(2)}%)`;
+    if (ratio < 0.95) {
+      return {
+        name: 'Memory Reflexion Coverage',
+        status: 'fail',
+        message: `${dbPath} — ${detail} below 95% floor; retrieveRelevant() cannot see uncovered episodes`,
+        fix: 'run `claude-flow memory distill run` to populate retrievable episodes',
+      };
+    }
+    return { name: 'Memory Reflexion Coverage', status: 'pass', message: `${dbPath} — ${detail}` };
+  } catch (e) {
+    return { name: 'Memory Reflexion Coverage', status: 'warn', message: `${dbPath} — probe threw: ${(e as Error).message || String(e)}` };
+  } finally { try { db.close(); } catch { /* best-effort */ } }
+}
+
+// Execution-tier feedback should carry a lesson, not just reward/success bits.
+// Proxy episodes intentionally remain critique-free to avoid laundering a
+// structural summary into an observed failure explanation.
+async function checkMemoryCritiqueCoverage(): Promise<HealthCheck> {
+  const dbPath = await resolveMemoryDbPath();
+  if (!dbPath) return { name: 'Memory Feedback Critiques', status: 'warn', message: 'no memory.db found' };
+  const db = await tryOpenSqlJs(dbPath);
+  if (!db) return { name: 'Memory Feedback Critiques', status: 'warn', message: 'DB unreadable (see Memory Integrity)' };
+  try {
+    const hasEpisodes = (db.exec(
+      "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='episodes'",
+    )[0]?.values?.[0]?.[0] ?? 0) > 0;
+    if (!hasEpisodes) return { name: 'Memory Feedback Critiques', status: 'warn', message: 'episodes table absent' };
+    const row = db.exec(`
+      SELECT count(*),
+        sum(CASE WHEN length(trim(coalesce(critique,''))) > 0 THEN 1 ELSE 0 END)
+      FROM episodes WHERE session_id LIKE 'distill:feedback%'
+    `)[0]?.values?.[0] ?? [0, 0];
+    const feedback = Number(row[0] ?? 0);
+    const withCritique = Number(row[1] ?? 0);
+    if (feedback === 0) {
+      return { name: 'Memory Feedback Critiques', status: 'warn', message: `${dbPath} — 0 execution-feedback episodes to assess` };
+    }
+    const ratio = withCritique / feedback;
+    const detail = `feedback critiques ${withCritique}/${feedback} (${(ratio * 100).toFixed(2)}%)`;
+    if (ratio < 0.95) {
+      return {
+        name: 'Memory Feedback Critiques',
+        status: 'fail',
+        message: `${dbPath} — ${detail} below 95% floor`,
+        fix: 'run current `claude-flow memory distill run`; execution-tier episodes preserve observed critique/error text',
+      };
+    }
+    return { name: 'Memory Feedback Critiques', status: 'pass', message: `${dbPath} — ${detail}` };
+  } catch (e) {
+    return { name: 'Memory Feedback Critiques', status: 'warn', message: `${dbPath} — probe threw: ${(e as Error).message || String(e)}` };
   } finally { try { db.close(); } catch { /* best-effort */ } }
 }
 
@@ -792,6 +1126,53 @@ async function checkMcpServers(): Promise<HealthCheck> {
     message: 'No MCP config found',
     fix: 'claude mcp add ruflo -- npx -y ruflo@latest mcp start',
   };
+}
+
+// #2726 — tools/list is fixed prompt overhead on clients/backends that do not
+// defer MCP schemas. Measure the actual live registry and warn before a small
+// context window becomes unrecoverable even after compaction.
+async function checkMcpSchemaOverhead(): Promise<HealthCheck> {
+  try {
+    const [{ listMCPTools }, {
+      assessMcpSchemaOverhead,
+      filterAdvertisedMcpTools,
+      parseMcpToolSelection,
+    }] = await Promise.all([
+      import('../mcp-client.js'),
+      import('../mcp-server.js'),
+    ]);
+    // The `mcp start --tools` CLI flag takes precedence when the server is
+    // constructed. Doctor intentionally inspects the environment fallback so
+    // its estimate describes the configuration inherited by MCP clients.
+    const selection = parseMcpToolSelection(process.env.CLAUDE_FLOW_MCP_TOOLS);
+    const tools = filterAdvertisedMcpTools(listMCPTools(), selection);
+    // This is diagnostic metadata about the external client's context window,
+    // not Ruflo command configuration, so there is no corresponding CLI flag.
+    const rawWindow = process.env.CLAUDE_FLOW_CONTEXT_WINDOW_TOKENS;
+    const contextWindow = rawWindow ? Number.parseInt(rawWindow, 10) : undefined;
+    const assessment = assessMcpSchemaOverhead(tools, contextWindow);
+    const ratio = assessment.ratio === undefined
+      ? ''
+      : `, ${(assessment.ratio * 100).toFixed(1)}% of ${assessment.contextWindowTokens}-token window`;
+    const selectionLabel = selection === 'all' ? 'all tools' : `filtered: ${selection.join(',')}`;
+    const message = `${assessment.toolCount} advertised tools ≈ ${assessment.estimatedTokens} schema tokens (${selectionLabel}${ratio})`;
+
+    if (assessment.risk === 'high') {
+      return {
+        name: 'MCP Schema Overhead',
+        status: 'warn',
+        message,
+        fix: 'Set CLAUDE_FLOW_MCP_TOOLS to required categories/tool names (for example: memory,swarm,agent,hooks) and optionally CLAUDE_FLOW_CONTEXT_WINDOW_TOKENS to your backend limit.',
+      };
+    }
+    return { name: 'MCP Schema Overhead', status: 'pass', message };
+  } catch (error) {
+    return {
+      name: 'MCP Schema Overhead',
+      status: 'warn',
+      message: `Unable to measure: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 // Check disk space (async with proper env inheritance)
@@ -1644,7 +2025,7 @@ export const doctorCommand: Command = {
     {
       name: 'component',
       short: 'c',
-      description: 'Check specific component (version, node, npm, config, daemon, memory, api, git, mcp, claude, disk, typescript, agentic-flow, encryption, federation, funnel, proxy, auth, metaharness)',
+      description: 'Check specific component (version, node, npm, config, daemon, memory, api, git, mcp, mcp-overhead, claude, disk, typescript, agentic-flow, encryption, federation, funnel, proxy, auth, metaharness)',
       type: 'string'
     },
     {
@@ -1767,12 +2148,14 @@ export const doctorCommand: Command = {
       checkGit,
       checkGitRepo,
       checkConfigFile,
-      checkStaleSettingsNpx, // #2448 — runaway `npx @latest` in statusLine/hooks
+      checkStaleSettingsNpx, // #2448/#2677 — runaway `npx @latest` in settings
       checkDaemonStatus,
       checkMemoryDatabase,
+      checkMemoryStructuralIntegrity, // #2737 — bounded, native quick_check on every default run
       checkLearningBridge, // #2545 — can the auto-memory hook actually load @claude-flow/memory?
       checkApiKeys,
       checkMcpServers,
+      checkMcpSchemaOverhead, // #2726 — fixed tools/list prompt cost
       checkAIDefence, // #1807
       checkDiskSpace,
       checkBuildTools,
@@ -1791,8 +2174,9 @@ export const doctorCommand: Command = {
     // array — expanded at execution time. Stuinfla's report showed the
     // existence-only check reporting PASS on a 99.97%-empty and even a
     // SQLite-malformed DB; the array here layers integrity → content →
-    // embedding coverage over the existing existence probe, ordered so
-    // the earliest chain-break is always the first red the user sees.
+    // embedding coverage over the existing existence probe; check 6 then
+    // verifies that distilled episodes are actually Reflexion-retrievable and
+    // execution feedback carries a lesson.
     const componentMap: Record<string, (() => Promise<HealthCheck>) | Array<() => Promise<HealthCheck>>> = {
       'version': checkVersionFreshness,
       'freshness': checkVersionFreshness,
@@ -1807,12 +2191,15 @@ export const doctorCommand: Command = {
         checkMemoryIntegrity,        // #2677 check 1: sql.js open + PRAGMA integrity_check
         checkMemoryContent,          // #2677 check 2: memory_entries content coverage
         checkMemoryEmbeddingCoverage, // #2677 check 3: vector coverage on populated rows
+        checkMemoryReflexionCoverage, // #2677 check 6: episodes are retrievable
+        checkMemoryCritiqueCoverage,  // #2677 check 6: feedback carries lessons
       ],
       'learning': checkLearningBridge, // #2545
       'learning-bridge': checkLearningBridge, // #2545
       'api': checkApiKeys,
       'git': checkGit,
       'mcp': checkMcpServers,
+      'mcp-overhead': checkMcpSchemaOverhead,
       'aidefence': checkAIDefence, // #1807
       'disk': checkDiskSpace,
       'typescript': checkBuildTools,

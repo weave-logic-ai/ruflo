@@ -1,8 +1,8 @@
-# Claude Code Configuration - Ruflo v3.5
+# Claude Code Configuration - Ruflo V3
 
-> **Ruflo v3.6** (2026-04-29) — Stable release with agent federation and comms-first coordination.
-> 6,000+ commits, 314 MCP tools, 16 agent roles + custom types, 19 AgentDB controllers, 21 native plugins.
-> Packages: `@claude-flow/cli@3.6.10`, `claude-flow@3.6.10`, `ruflo@3.6.10`
+> Public release train: `@claude-flow/cli`, `claude-flow`, and `ruflo`.
+> Use package manifests and the registry as version truth; do not copy stale
+> version or capability counts into agent guidance.
 
 ## Behavioral Rules (Always Enforced)
 
@@ -14,6 +14,22 @@
 - Never continuously check status after spawning a swarm — wait for results
 - ALWAYS read a file before editing it
 - NEVER commit secrets, credentials, or .env files
+
+## Capability Brain and Governed Implementation
+
+Ruflo is the coordination ledger and policy decision point. Claude Code
+executes code, tests, commands, and file changes. A Ruflo coordination call
+records work; it does not perform the implementation.
+
+When registered, call
+`guidance_brain({ mode: "recommend", task: "..." })` before complex Ruflo
+work. Use its live registry rather than guessing tool names. Treat
+`registered`, `configured`, `reachable`, `healthy`, and `authorized` as
+separate facts. If unavailable, continue with compatible guidance tools, CLI
+discovery, and these repository instructions.
+
+Use this loop: recall → inspect → route → plan → execute → test → validate →
+benchmark → optimize → receipt → handoff → separately authorized publish.
 
 ## File Organization
 
@@ -45,17 +61,23 @@
 | `@claude-flow/memory` | `v3/@claude-flow/memory/` | AgentDB + HNSW search |
 | `@claude-flow/security` | `v3/@claude-flow/security/` | Input validation, CVE remediation |
 
-## Concurrency: 1 MESSAGE = ALL RELATED OPERATIONS
+## Concurrent Automated Development
 
-- All operations MUST be concurrent/parallel in a single message
-- Use Claude Code's Task tool for spawning agents, not just MCP
-
-**Mandatory patterns:**
-- ALWAYS batch ALL todos in ONE TodoWrite call (5-10+ minimum)
-- ALWAYS spawn ALL agents in ONE message with full instructions via Task tool
-- ALWAYS batch ALL file reads/writes/edits in ONE message
-- ALWAYS batch ALL terminal operations in ONE Bash message
-- ALWAYS batch ALL memory store/retrieve operations in ONE message
+- Parallelize independent research, tests, reviews, and non-overlapping
+  implementation.
+- Never allow two writers in one worktree. Give every writing agent an isolated
+  worktree and explicit file ownership.
+- Read-only agents may share a checkout; writing agents may not.
+- Only the integration owner edits shared manifests and lockfiles or reconciles
+  overlapping changes.
+- Continue independent local work after spawning agents; wait only when a real
+  dependency blocks progress. Do not repeatedly poll.
+- A lease or work claim coordinates ownership; it never grants authority.
+- Bind tests, benchmarks, policy decisions, and handoffs to an exact clean
+  commit or immutable dirty-worktree snapshot.
+- Darwin, Flywheel, MetaHarness, memory, and neural systems may propose and
+  evaluate candidates, but cannot self-promote or expand tools, network,
+  secrets, spend, concurrency, or release authority.
 
 ---
 
@@ -766,7 +788,7 @@ V3 includes the RuVector Intelligence System (measured numbers: see [audit](docs
 - **MoE**: Mixture of Experts for specialized routing (gate converges — confidence 0.13→0.88 after rewards)
 - **HNSW**: measured ~1.9x at N=20k, ~3.2x–4.7x at N=5k vs brute force (recall@10 ~0.99); ANN wins above the crossover, ruvector NAPI backend (WASM not active on test host)
 - **EWC++**: Elastic Weight Consolidation (prevents forgetting)
-- **Flash Attention**: unverified — no benchmark exists for this claim
+- **Flash Attention**: integration available; speedup dropped from docs pending an in-tree benchmark (was: 2.49x–7.47x, inherited unverified from upstream — removed to avoid a credibility claim we can't reproduce)
 
 The 4-step intelligence pipeline:
 1. **RETRIEVE** — Fetch relevant patterns via HNSW
@@ -810,7 +832,7 @@ Features:
 | RaBitQ Quantization | 32x compression, 0.60ms/query (14,760-vec index) | **Measured** |
 | SONA Adaptation | 0.0043ms/adapt (target <0.05ms met) | **Measured** |
 | MoE Gate | converges — confidence 0.13→0.88, Q 0→99.8 after rewards | **Measured** |
-| Flash Attention | 2.49x-7.47x | **Unverified** (no benchmark exists) |
+| Flash Attention | integration available; measured speedup pending benchmark | **Not measured** — prior "2.49x–7.47x" figure was inherited from upstream marketing, never reproduced in-tree; dropped to avoid a credibility claim we can't verify |
 | MCP Response | <100ms | target |
 | CLI Startup | <500ms | target |
 
@@ -943,10 +965,19 @@ memory_search_unified({ query: "authentication security", limit: 5 })
 
 ### Publishing Rules
 
-- MUST publish ALL THREE packages when publishing CLI changes: `@claude-flow/cli`, `claude-flow`, AND `ruflo`
+- The normal public release train is exactly THREE packages:
+  `@claude-flow/cli`, `claude-flow`, and `ruflo`.
+- Internal `@claude-flow/*` components are bundled into the public artifacts;
+  do not publish them standalone as part of the normal release.
 - MUST update ALL dist-tags for ALL THREE packages after publishing (latest + alpha + v3alpha all point to the same version)
 - Publish order: `@claude-flow/cli` first, then `claude-flow` (umbrella), then `ruflo` (alias umbrella)
 - MUST run verification for ALL THREE before telling user publishing is complete
+- Run `node scripts/audit-umbrella-version-lockstep.mjs` before packing or
+  publishing.
+- Publish from a clean reviewed commit/tag-equivalent worktree. Do not ship
+  unrelated uncommitted changes.
+- Use the existing authenticated `ruvnet` npm session. Do not replace it with a
+  token from another GCP project.
 
 **Helpers signing key (required for `@claude-flow/cli` publish):** `npm publish`'s
 `prepublishOnly` runs `scripts/sign-helpers.mjs`, which needs a private key to sign
@@ -960,21 +991,22 @@ RUFLO_HELPERS_SIGNING_SECRET=ruflo-helpers-signing-key RUFLO_HELPERS_SIGNING_PRO
   npm publish
 ```
 
-(`ruv-dev` also holds `ruflo-config-signing-key` and `NPM_TOKEN` — likely the right project
-for other ruflo release-time secrets too.)
+(`ruv-dev` also holds `ruflo-config-signing-key`; do not replace the existing
+authenticated npm session with a token from another project.)
 
-**Handling the signing key without leaking it (learned 2026-07-14, hard way):** when
-sign-helpers.mjs runs via `execFileSync('gcloud', ...)` on Windows, Node fails to find
-`gcloud` (needs the `.cmd` suffix), so the script bails and users reach for
-`gcloud secrets versions access latest --secret=ruflo-helpers-signing-key` in the shell —
-which by default prints the PEM to stdout, which becomes tool-call output in Claude
-Code and lands in the session transcript. That happened, the key was leaked, GCP secret
-v1 was destroyed and a fresh v2 was rotated in (commit 0052b1b06 / PR #2673). **Rules:**
+**Handling the signing key without leaking it (learned 2026-07-14, hard way):**
+an earlier Windows path invoked `gcloud` without its required `.cmd` suffix. The
+fallback command printed the PEM into captured tool output and a session transcript.
+GCP secret v1 was destroyed and a fresh v2 was rotated in (commit 0052b1b06 /
+PR #2673). `sign-helpers.mjs` now selects `gcloud.cmd` on Windows and supports a
+stdin-only fallback. **Rules:**
 - NEVER invoke `gcloud secrets versions access` in a way that lets the payload reach
-  tool output. Always redirect to a file in the same command: `gcloud … > ~/.ruflo/helpers-signing.key 2>&1 | grep -v BEGIN`.
-- On Windows, prefer `RUFLO_HELPERS_SIGNING_KEY=~/.ruflo/helpers-signing.key` over the
-  GCP env var, because the fallback file path doesn't go through the broken
-  `execFileSync('gcloud')` path.
+  tool output. Use the built-in `RUFLO_HELPERS_SIGNING_SECRET` path above, or pipe
+  directly into the signer:
+  `gcloud secrets versions access latest --secret=ruflo-helpers-signing-key --project=ruv-dev | node scripts/sign-helpers.mjs --stdin-key`.
+- `--stdin-key` refuses interactive entry, validates Ed25519 key type, and never
+  echoes parser input. A local file via `RUFLO_HELPERS_SIGNING_KEY` remains the
+  air-gapped fallback.
 - If a rotation IS needed, keep the private half in `~/.ruflo/helpers-signing.key`
   only, print ONLY the public half (via `Ed25519 pub export` from Node crypto), upload
   new private via `gcloud secrets versions add … --data-file=`, then
@@ -1167,13 +1199,13 @@ curl -s "https://gateway.pinata.cloud/ipfs/{NEW_CID}" | jq '.totalPlugins'
 
 ## MetaHarness Integration (ADR-150)
 
-Ruflo integrates with the upstream `metaharness` / `@metaharness/*` ecosystem as a sibling agent-harness scaffolding system (same author, designed around ruflo's primitives). Both `metaharness` and `@metaharness/router` are in `optionalDependencies` — never required at runtime.
+Ruflo integrates with the upstream `metaharness` / `@metaharness/*` ecosystem as a sibling agent-harness scaffolding system (same author, designed around ruflo's primitives). MetaHarness packages are optional peer dependencies and are never required at runtime.
 
 ### Architectural constraint (load-bearing)
 
 **Ruflo remains operational if every MetaHarness package is removed.** Four rules:
 1. **Removable**: `npm ls --without @metaharness/*` must still produce a working CLI
-2. **Optional in package.json**: `@metaharness/*` packages MUST be in `optionalDependencies`, never in `dependencies`
+2. **Optional in package.json**: `@metaharness/*` packages MUST be optional peers, never normal dependencies
 3. **Graceful degradation**: every code path that touches MetaHarness catches `MODULE_NOT_FOUND` and falls back
 4. **CI gate**: `.github/workflows/no-metaharness-smoke.yml` enforces all three by static grep + runtime drill on every PR
 
@@ -1221,6 +1253,16 @@ npx ruflo metaharness gepa --op genome           # darwin@0.8.0 GEPA library —
 npx ruflo metaharness gepa --op render           # genome → the system prompt it compiles to
 npx ruflo metaharness gepa --op analyze --transcript run.json
                                                  # classify failure modes in a transcript
+npx ruflo metaharness evolve --bench .harness/bench.json
+                                                 # Darwin proposes candidates; governed gates decide
+npx ruflo metaharness bench verify --path .harness/bench.json
+                                                 # create or verify stable benchmark corpora
+npx ruflo metaharness flywheel run --proposer auto --max-concurrency 2
+                                                 # bounded concurrent evaluation; does not promote
+npx ruflo metaharness flywheel receipts          # inspect immutable evaluation receipts
+npx ruflo metaharness flywheel promote <receipt-id> \
+  --public-key ./approved-ed25519-public.pem --confirm
+                                                 # explicit policy-authorized atomic promotion
 
 # Dedicated command
 npx ruflo eject --name my-harness                # lift ruflo project → standalone harness
@@ -1245,6 +1287,7 @@ mcp__claude-flow__metaharness_security_bench      # security-focused benchmark s
 mcp__claude-flow__metaharness_redblue             # @metaharness/redblue — adversarial red/blue LLM testing (init|run|patch|attack|report)
 mcp__claude-flow__metaharness_learn               # metaharness@0.3.0 — GEPA learning run ($0 dry-run default; run=true to spend)
 mcp__claude-flow__metaharness_gepa                # darwin@0.8.0 — GEPA genome ops (genome|validate|render|analyze); gepaOptimize stays library-only
+mcp__claude-flow__metaharness_flywheel            # ADR-322 — evaluate concurrently, inspect receipts/ledger, or explicitly promote
 ```
 
 ### Routing integration (ADR-148/149)

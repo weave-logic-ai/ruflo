@@ -90,10 +90,15 @@ function parseStatus(text) {
   // `**Status**:` (colon outside) and dropped every Nygard-style ADR
   // to status=Unknown. Now the colon can sit on either side of the `**`.
   // Strip parenthetical qualifiers like "Proposed (v3.6.x)" -> "Proposed".
-  let m = /^\*\*Status:?\*\*:?\s*([A-Za-z][A-Za-z\- ]*?)(?:\s*\(.*?\))?\s*$/m.exec(text);
+  //
+  // #2781 (Jordi-Izquierdo-DDS): tolerate an optional Markdown list-item
+  // prefix (`- **Status**: proposed`) — that's exactly what adr-create's
+  // own template emits, and the column-0-anchored regex dropped every
+  // freshly-scaffolded ADR to status=Unknown, making adr-review a no-op.
+  let m = /^[-*+]?\s*\*\*Status:?\*\*:?\s*([A-Za-z][A-Za-z\- ]*?)(?:\s*\(.*?\))?\s*$/m.exec(text);
   if (m) return m[1].trim();
   // Also handle full-bold MADR style: **Status: Value** (entire phrase bolded)
-  m = /^\*\*Status:\s*([A-Za-z][A-Za-z\- ]*?)(?:\s*\([^)]*\))?\*\*\s*$/m.exec(text);
+  m = /^[-*+]?\s*\*\*Status:\s*([A-Za-z][A-Za-z\- ]*?)(?:\s*\([^)]*\))?\*\*\s*$/m.exec(text);
   return m ? m[1].trim() : 'Unknown';
 }
 
@@ -103,7 +108,9 @@ function parseDate(text) {
     const m = /^date:\s*(\S+)/m.exec(fm[1]);
     if (m) return m[1];
   }
-  const m = /^\*\*Date\*\*:\s*(\S+)/m.exec(text);
+  // #2659: adr-create emits metadata as Markdown list items. Accept the
+  // optional list marker and both common colon placements, matching Status.
+  const m = /^[-*+]?\s*\*\*Date:?\*\*:?\s*(\S+)/m.exec(text);
   return m ? m[1] : '';
 }
 
@@ -113,7 +120,7 @@ function parseTags(text) {
     const m = /^tags:\s*\[([^\]]+)\]/m.exec(fm[1]);
     if (m) return m[1].split(',').map((s) => s.trim()).filter(Boolean);
   }
-  const m = /^\*\*Tags\*\*:\s*(.+)$/m.exec(text);
+  const m = /^[-*+]?\s*\*\*Tags:?\*\*:?\s*(.+)$/m.exec(text);
   return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
 }
 
@@ -152,7 +159,20 @@ function parseLinks(text, selfId) {
   // placements (`**Supersedes:**` and `**Supersedes**:`) and an optional
   // parenthetical qualifier like `**Supersedes (partial):**` — same
   // tolerance as parseStatus.
-  const REL = (label) => new RegExp(`^\\*\\*${label}(?:\\s*\\([^)]*\\))?:?\\*\\*:?\\s*(.+)$`, 'mi');
+  //
+  // #2781 (Jordi-Izquierdo-DDS): a wrapped relation like
+  //   **Related**: ADR-124,
+  //   ADR-125
+  // silently dropped ADR-125 because `(.+)$` under /m only captures one
+  // physical line. Now capture the first line plus any continuation lines
+  // that don't look like the start of a new field (bold **Label**:), a
+  // heading (`##`), a horizontal rule (`---`), or a new list bullet.
+  // Safe because extractAdrRefs strips anything that isn't an ADR-NNN
+  // token, so over-capture into a plain-text continuation is harmless.
+  const REL = (label) => new RegExp(
+    `^[-*+]?\\s*\\*\\*${label}(?:\\s*\\([^)]*\\))?:?\\*\\*:?\\s*(.+(?:\\n(?!\\s*(?:\\*\\*[A-Za-z]|##|---|[-*+]\\s|\\d+\\.\\s))[^\\n]+)*)`,
+    'mi',
+  );
   const supersedes = REL('Supersedes').exec(text);
   if (supersedes) for (const ref of extractAdrRefs(supersedes[1])) out.push({ from: ref, to: selfId, relation: 'supersedes' });
   const amended = REL('(?:Amended[ -]by|Amends)').exec(text);

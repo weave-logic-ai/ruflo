@@ -15,6 +15,7 @@ import { EventEmitter } from 'events';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, unlinkSync, renameSync } from 'fs';
 import { cpus } from 'os';
 import { join } from 'path';
+import { writeFileAtomic } from '../fs-secure.js';
 import {
   HeadlessWorkerExecutor,
   HEADLESS_WORKER_TYPES,
@@ -182,7 +183,10 @@ const NO_DISTILL_ENV = 'RUFLO_DAEMON_NO_DISTILL';
 // half a day; set RUFLO_DAEMON_TTL_SECS=0 (or `--ttl 0`) to opt out. Idle
 // shutdown is opt-in (0 = disabled) since a legitimately quiet daemon is not a leak.
 const DEFAULT_DAEMON_TTL_MS = 12 * 60 * 60 * 1000;
-const DEFAULT_DAEMON_IDLE_SHUTDOWN_MS = 0;
+// #2834 — an auto-started daemon must not remain alive for the full 12h TTL
+// after its workspace goes idle. Explicit 0 via config/env still disables the
+// idle cap for operators who intentionally want a resident daemon.
+const DEFAULT_DAEMON_IDLE_SHUTDOWN_MS = 30 * 60 * 1000;
 
 /**
  * Read a non-negative seconds value from an env var and return it as ms.
@@ -1740,6 +1744,7 @@ export class WorkerDaemon extends EventEmitter {
       // instead of becoming their own distinct pattern.
       duplicatesRemoved: Math.max(0, report.processed - report.patterns),
       episodes: report.episodes,
+      episodeEmbeddings: report.episodeEmbeddings,
       patternEmbeddings: report.patternEmbeddings,
       causalEdges: report.causalEdges,
       promoted: report.promoted,
@@ -2027,9 +2032,11 @@ export class WorkerDaemon extends EventEmitter {
     };
 
     try {
-      const tmpFile = this.config.stateFile + '.tmp';
-      writeFileSync(tmpFile, JSON.stringify(state, null, 2));
-      renameSync(tmpFile, this.config.stateFile);
+      // ruvnet/ruflo#2782: use writeFileAtomic — its temp file is uniquified with
+      // pid + timestamp + random suffix, so two concurrent in-process saveState()
+      // calls can no longer collide on a shared `.tmp` basename and race one
+      // another's renameSync into ENOENT. Related to but distinct from #1637.
+      writeFileAtomic(this.config.stateFile, Buffer.from(JSON.stringify(state, null, 2)));
     } catch (error) {
       this.log('error', `Failed to save state: ${error}`);
     }

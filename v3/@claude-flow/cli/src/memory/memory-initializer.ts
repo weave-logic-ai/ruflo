@@ -16,6 +16,27 @@ import { readFileMaybeEncrypted, writeFileAtomic, writeFileRestricted } from '..
 import { restoreMemoryDbFromBackup } from '../services/memory-backup.js';
 
 /**
+ * ADR-323 — typed memory provenance. Distinguishes WHO/WHAT wrote a memory
+ * entry (a user's stated claim vs an agent's own output vs a tool result vs
+ * a raw system observation) so retrieval can filter by trust level instead
+ * of treating every entry in a shared namespace as equally authoritative.
+ * `unknown` is the backward-compatible default for entries written before
+ * this field existed, and for callers that don't pass one.
+ */
+export const PROVENANCE_TYPES = [
+  'user_claim',
+  'agent_output',
+  'system_observation',
+  'tool_result',
+  'unknown',
+] as const;
+export type ProvenanceType = (typeof PROVENANCE_TYPES)[number];
+
+export function isValidProvenanceType(value: unknown): value is ProvenanceType {
+  return typeof value === 'string' && (PROVENANCE_TYPES as readonly string[]).includes(value);
+}
+
+/**
  * #2356 — cached, synchronous capability probe for @ruvector/core. `getHNSWStatus`
  * is sync and is called by `neural status` in a fresh process that never warms
  * the lazy HNSW singleton, so reporting availability off the warm singleton
@@ -34,6 +55,33 @@ function isRuvectorCoreResolvable(): boolean {
     _ruvectorCoreResolvable = false;
   }
   return _ruvectorCoreResolvable;
+}
+
+/**
+ * #2735 — before a whole-image sql.js read-modify-persist (export() +
+ * rename over the live database path), refuse if there is evidence of a
+ * live native (better-sqlite3) WAL connection: `-wal`/`-shm` sidecar files
+ * on disk. A native connection in WAL mode keeps its sidecars present for
+ * its entire lifetime (removed only on the last connection's clean close),
+ * so their presence is strong evidence of a live native holder — and their
+ * absence means the image is a clean, checkpointed, standalone file that
+ * sql.js can safely read-modify-write.
+ *
+ * This is a scoped-down version of the fuller "scan live process holders"
+ * design discussed in #2735: it does not close the narrow assess-then-write
+ * race (a native opener could still attach in the gap between this check
+ * and the write), but it directly closes the demonstrated corruption
+ * mechanism — a whole-image write proceeding while an ALREADY-OPEN native
+ * connection's sidecars are on disk — with no platform-specific process
+ * scanning. Fails closed (treats a stat error as "unsafe") because this is
+ * a safety gate, not a best-effort probe.
+ */
+function hasNativeWalSidecars(dbPath: string): boolean {
+  try {
+    return fs.existsSync(`${dbPath}-wal`) || fs.existsSync(`${dbPath}-shm`);
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -112,6 +160,11 @@ export function resolveDbPath(cliFlag?: string): string {
   return path.join(getMemoryRoot(), 'memory.db');
 }
 
+// #2652/#2120: legacy rows with NULL status predate soft-delete semantics and
+// are active. Keep fallback retrieve/delete aligned with list and the native
+// bridge instead of making a row visible to one command but not another.
+const ACTIVE_MEMORY_ROW_SQL = `(status = 'active' OR status IS NULL)`;
+
 // ADR-053: Lazy import of AgentDB v3 bridge
 let _bridge: typeof import('./memory-bridge.js') | null | undefined;
 async function getBridge(): Promise<typeof import('./memory-bridge.js') | null> {
@@ -130,6 +183,31 @@ async function getBridge(): Promise<typeof import('./memory-bridge.js') | null> 
     _bridge = null;
     return null;
   }
+}
+
+/**
+ * Build the WAL-sidecar refusal message, naming the bridge failure when one
+ * was recorded.
+ *
+ * The refusal tells the operator to "restore the native better-sqlite3
+ * bridge" but, on its own, gives them no way to discover why it is down —
+ * and the usual cause is a latched init failure inside the bridge, not a
+ * missing better-sqlite3. Appending the recorded reason turns an unactionable
+ * message into a diagnosis.
+ */
+async function walRefusalError(operation: 'write' | 'read/write'): Promise<string> {
+  const base = 'memory database has an active native WAL connection '
+    + '(found -wal/-shm sidecar files) — refusing an unsafe sql.js '
+    + `whole-image ${operation}. Retry once the native writer completes, or `
+    + 'restore the native better-sqlite3 bridge.';
+  try {
+    const bridge = await getBridge();
+    const reason = bridge?.getBridgeFailureReason?.();
+    if (reason) return `${base} Bridge unavailable: ${reason}`;
+  } catch {
+    // Diagnostics must never mask the refusal they annotate.
+  }
+  return base;
 }
 
 /**
@@ -166,6 +244,13 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   tags TEXT, -- JSON array
   metadata TEXT, -- JSON object
   owner_id TEXT,
+
+  -- ADR-323: who/what produced this entry — lets shared-namespace retrieval
+  -- filter by trust level instead of conflating a user's stated claim with
+  -- an agent's own output or a raw tool/system observation.
+  provenance_type TEXT DEFAULT 'unknown' CHECK(provenance_type IN (
+    'user_claim', 'agent_output', 'system_observation', 'tool_result', 'unknown'
+  )),
 
   -- Timestamps
   created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
@@ -462,7 +547,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 // Uses @ruvector/core from agentic-flow for WASM-accelerated HNSW
 // ============================================================================
 
-interface HNSWEntry {
+export interface HNSWEntry {
   id: string;
   key: string;
   namespace: string;
@@ -640,6 +725,69 @@ function saveHNSWMetadata(): void {
     fs.writeFileSync(metadataPath, JSON.stringify(metadata));
   } catch {
     // Silently fail - metadata save is best-effort
+  }
+}
+
+export function removeHNSWEntriesByLogicalKey(
+  entries: Map<string, HNSWEntry>,
+  key: string,
+  namespace: string,
+): number {
+  let removed = 0;
+  for (const [id, entry] of entries) {
+    if (entry.key === key && (entry.namespace ?? 'default') === namespace) {
+      entries.delete(id);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+function removeHNSWEntriesByKey(key: string, namespace: string): number {
+  if (!hnswIndex?.entries) return 0;
+  const removed = removeHNSWEntriesByLogicalKey(hnswIndex.entries, key, namespace);
+  if (removed > 0) {
+    saveHNSWMetadata();
+    rebuildSearchIndex();
+  }
+  return removed;
+}
+
+/**
+ * Remove HNSW metadata whose authoritative SQLite row is no longer active.
+ * Persistent graph nodes may remain physically allocated, but without metadata
+ * they cannot resolve into search results; the next rebuild repopulates only
+ * active rows. Returns the number of searchable vectors invalidated.
+ */
+export async function reconcileHNSWIndex(dbPath?: string): Promise<number> {
+  if (!hnswIndex?.entries) return 0;
+  const effectivePath = dbPath
+    ? path.resolve(dbPath)
+    : path.join(getMemoryRoot(), 'memory.db');
+  if (!fs.existsSync(effectivePath)) return 0;
+  try {
+    const initSqlJs = (await import('sql.js')).default;
+    const SQL = await initSqlJs();
+    const db = new SQL.Database(readFileMaybeEncrypted(effectivePath, null));
+    const rows = db.exec(`SELECT id FROM memory_entries WHERE status = 'active'`);
+    const active = new Set(
+      (rows[0]?.values ?? []).map((row) => String(row[0])),
+    );
+    db.close();
+    let removed = 0;
+    for (const id of hnswIndex.entries.keys()) {
+      if (!active.has(id)) {
+        hnswIndex.entries.delete(id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      saveHNSWMetadata();
+      rebuildSearchIndex();
+    }
+    return removed;
+  } catch {
+    return 0;
   }
 }
 
@@ -1151,7 +1299,13 @@ export async function ensureSchemaColumns(dbPath: string): Promise<{
       { name: 'expires_at', definition: 'expires_at INTEGER' },
       { name: 'last_accessed_at', definition: 'last_accessed_at INTEGER' },
       { name: 'access_count', definition: 'access_count INTEGER DEFAULT 0' },
-      { name: 'status', definition: "status TEXT DEFAULT 'active'" }
+      { name: 'status', definition: "status TEXT DEFAULT 'active'" },
+      // ADR-323: older DBs predate provenance typing entirely — backfilled
+      // as 'unknown' via the DEFAULT, same convention as 'type'/'status'
+      // above (no CHECK on the ALTER; enforcement happens in storeEntry()/
+      // bridgeStoreEntry() so an invalid value gets a CLI-friendly error
+      // instead of a raw SQLite constraint failure).
+      { name: 'provenance_type', definition: "provenance_type TEXT DEFAULT 'unknown'" }
     ];
 
     let modified = false;
@@ -1652,8 +1806,7 @@ export async function initializeMemoryDatabase(options: {
     migrate = true
   } = options;
 
-  const swarmDir = getMemoryRoot();
-  const dbPath = customPath || path.join(swarmDir, 'memory.db');
+  const dbPath = resolveDbPath(customPath);
   const dbDir = path.dirname(dbPath);
 
   try {
@@ -2623,12 +2776,25 @@ export async function storeEntry(options: {
   ttl?: number;
   dbPath?: string;
   upsert?: boolean;
+  /** ADR-323: defaults to 'unknown' when omitted. */
+  provenanceType?: string;
 }): Promise<{
   success: boolean;
   id: string;
   embedding?: { dimensions: number; model: string };
   error?: string;
 }> {
+  // ADR-323: validate before touching either backend so an invalid value
+  // gets one clear error instead of a raw SQLite CHECK-constraint failure
+  // from whichever path (bridge vs sql.js) happens to run.
+  if (options.provenanceType !== undefined && !isValidProvenanceType(options.provenanceType)) {
+    return {
+      success: false,
+      id: '',
+      error: `Invalid provenance type "${options.provenanceType}" — must be one of: ${PROVENANCE_TYPES.join(', ')}`,
+    };
+  }
+
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
@@ -2637,6 +2803,9 @@ export async function storeEntry(options: {
       // Keep HNSW index in sync with bridge-stored entries
       if (bridgeResult.rawEmbedding && bridgeResult.success) {
         const ns = options.namespace || 'default';
+        // Upsert/resurrection may allocate a new row id. Remove every older
+        // vector for the logical (namespace,key), not merely the newest id.
+        removeHNSWEntriesByKey(options.key, ns);
         await addToHNSWIndex(bridgeResult.id, bridgeResult.rawEmbedding, {
           id: bridgeResult.id,
           key: options.key,
@@ -2657,7 +2826,8 @@ export async function storeEntry(options: {
     tags = [],
     ttl,
     dbPath: customPath,
-    upsert = false
+    upsert = false,
+    provenanceType
   } = options;
 
   const swarmDir = getMemoryRoot();
@@ -2668,6 +2838,20 @@ export async function storeEntry(options: {
       return { success: false, id: '', error: 'Database not initialized. Run: claude-flow memory init' };
     }
 
+    // #2735 — refuse an unsafe whole-image write while a native WAL
+    // connection appears to be attached (sidecars on disk). See
+    // hasNativeWalSidecars()'s doc comment for the corruption mechanism
+    // this closes and its known residual (the narrow assess-then-write
+    // race). This check gates ensureSchemaColumns()'s own whole-image
+    // write below too, not just this function's.
+    if (hasNativeWalSidecars(dbPath)) {
+      return {
+        success: false,
+        id: '',
+        error: await walRefusalError('write'),
+      };
+    }
+
     // Ensure schema has all required columns (migration for older DBs)
     await ensureSchemaColumns(dbPath);
 
@@ -2676,6 +2860,20 @@ export async function storeEntry(options: {
 
     const fileBuffer = readFileMaybeEncrypted(dbPath, null);
     const db = new SQL.Database(fileBuffer);
+    let persistedProvenance = provenanceType ?? 'unknown';
+    if (upsert && provenanceType === undefined) {
+      try {
+        const stmt = db.prepare(
+          'SELECT provenance_type FROM memory_entries WHERE namespace = ? AND key = ? LIMIT 1'
+        );
+        stmt.bind([namespace, key]);
+        if (stmt.step()) {
+          const existingType = stmt.get()[0];
+          persistedProvenance = isValidProvenanceType(existingType) ? existingType : 'unknown';
+        }
+        stmt.free();
+      } catch { /* legacy schema or new row — keep unknown */ }
+    }
 
     const id = `entry_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const now = Date.now();
@@ -2709,13 +2907,13 @@ export async function storeEntry(options: {
       ? `INSERT OR REPLACE INTO memory_entries (
           id, key, namespace, content, type,
           embedding, embedding_dimensions, embedding_model,
-          tags, metadata, created_at, updated_at, expires_at, status
-        ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`
+          tags, metadata, provenance_type, created_at, updated_at, expires_at, status
+        ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`
       : `INSERT INTO memory_entries (
           id, key, namespace, content, type,
           embedding, embedding_dimensions, embedding_model,
-          tags, metadata, created_at, updated_at, expires_at, status
-        ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, 'active')`;
+          tags, metadata, provenance_type, created_at, updated_at, expires_at, status
+        ) VALUES (?, ?, ?, ?, 'semantic', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`;
 
     db.run(insertSql, [
       id,
@@ -2727,6 +2925,7 @@ export async function storeEntry(options: {
       embeddingModel,
       tags.length > 0 ? JSON.stringify(tags) : null,
       '{}',
+      persistedProvenance,
       now,
       now,
       ttl ? now + (ttl * 1000) : null
@@ -2740,6 +2939,7 @@ export async function storeEntry(options: {
     // Add to HNSW index for faster future searches
     if (embeddingJson) {
       const embResult = JSON.parse(embeddingJson) as number[];
+      if (upsert) removeHNSWEntriesByKey(key, namespace);
       await addToHNSWIndex(id, embResult, {
         id,
         key,
@@ -2772,6 +2972,10 @@ export async function searchEntries(options: {
   limit?: number;
   threshold?: number;
   dbPath?: string;
+  /** ADR-323: restrict results to these provenance types (e.g. exclude
+   *  'user_claim' when retrieving for fact-checking, per MemSyco-Bench's
+   *  sycophancy finding). Omit/empty = no filtering (all types). */
+  provenanceFilter?: string[];
 }): Promise<{
   success: boolean;
   results: {
@@ -2780,10 +2984,23 @@ export async function searchEntries(options: {
     content: string;
     score: number;
     namespace: string;
+    provenanceType?: string;
   }[];
   searchTime: number;
   error?: string;
 }> {
+  if (options.provenanceFilter?.length) {
+    const invalid = options.provenanceFilter.filter(p => !isValidProvenanceType(p));
+    if (invalid.length > 0) {
+      return {
+        success: false,
+        results: [],
+        searchTime: 0,
+        error: `Invalid provenance filter value(s): ${invalid.join(', ')} — must be one of: ${PROVENANCE_TYPES.join(', ')}`,
+      };
+    }
+  }
+
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
@@ -2797,7 +3014,8 @@ export async function searchEntries(options: {
     namespace,
     limit = 10,
     threshold = 0.3,
-    dbPath: customPath
+    dbPath: customPath,
+    provenanceFilter
   } = options;
   const effectiveNamespace = namespace || 'all';
 
@@ -2827,13 +3045,21 @@ export async function searchEntries(options: {
         const SQL = await initSqlJs();
         const fileBuffer = readFileMaybeEncrypted(dbPath, null);
         const db = new SQL.Database(fileBuffer);
-        const reranked: { id: string; key: string; content: string; score: number; namespace: string }[] = [];
+        const reranked: { id: string; key: string; content: string; score: number; namespace: string; provenanceType?: string }[] = [];
 
         for (const candidate of rabitqCandidates) {
-          const stmt = db.prepare('SELECT content, embedding FROM memory_entries WHERE id = ? AND status = ?');
+          // ADR-323: provenance_type is fetched in the same per-candidate
+          // query (no extra round-trip) so a provenance-filtered search
+          // still gets RaBitQ's speedup instead of falling back to brute
+          // force.
+          const stmt = db.prepare('SELECT content, embedding, provenance_type FROM memory_entries WHERE id = ? AND status = ?');
           stmt.bind([candidate.id, 'active']);
           if (stmt.step()) {
-            const [content, embeddingJson] = stmt.get() as [string, string | null];
+            const [content, embeddingJson, provenanceTypeVal] = stmt.get() as [string, string | null, string | null];
+            if (provenanceFilter?.length && !provenanceFilter.includes(provenanceTypeVal || 'unknown')) {
+              stmt.free();
+              continue;
+            }
             let score = 0;
             if (embeddingJson) {
               try {
@@ -2848,6 +3074,7 @@ export async function searchEntries(options: {
                 content: (content || '').substring(0, 60) + ((content || '').length > 60 ? '...' : ''),
                 score,
                 namespace: candidate.namespace,
+                provenanceType: provenanceTypeVal || 'unknown',
               });
             }
           }
@@ -2855,7 +3082,10 @@ export async function searchEntries(options: {
         }
         db.close();
 
-        if (reranked.length > 0) {
+        // A filtered ANN candidate window can underfill even when qualifying
+        // rows exist outside that window. Fall through to the authoritative
+        // filtered SQL scan unless ANN filled the requested page.
+        if (reranked.length > 0 && (!provenanceFilter?.length || reranked.length >= limit)) {
           reranked.sort((a, b) => b.score - a.score);
           return { success: true, results: reranked.slice(0, limit), searchTime: Date.now() - startTime };
         }
@@ -2863,15 +3093,58 @@ export async function searchEntries(options: {
     } catch { /* RaBitQ unavailable, fall through */ }
 
     // Try HNSW search (150x faster than brute-force)
-    const hnswResults = await searchHNSWIndex(queryEmbedding, { k: limit, namespace: effectiveNamespace });
+    const hnswResults = await searchHNSWIndex(queryEmbedding, {
+      k: provenanceFilter?.length ? Math.max(limit * 4, limit + 32) : limit,
+      namespace: effectiveNamespace,
+    });
     if (hnswResults && hnswResults.length > 0) {
       // Filter by threshold
-      const filtered = hnswResults.filter(r => r.score >= threshold);
-      return {
-        success: true,
-        results: filtered,
-        searchTime: Date.now() - startTime
-      };
+      let filtered: Array<{ id: string; key: string; content: string; score: number; namespace: string; provenanceType?: string }> =
+        hnswResults.filter(r => r.score >= threshold);
+
+      // ADR-323: the in-memory HNSW index doesn't carry provenance_type on
+      // its entries, so resolve it from SQLite for a consistent result shape
+      // and apply any trust filter before returning.
+      if (filtered.length > 0) {
+        try {
+          const initSqlJs = (await import('sql.js')).default;
+          const SQL = await initSqlJs();
+          const fileBuffer = readFileMaybeEncrypted(dbPath, null);
+          const db = new SQL.Database(fileBuffer);
+          const provenanceByKey = new Map<string, string>();
+          for (const r of filtered) {
+            const stmt = db.prepare('SELECT provenance_type FROM memory_entries WHERE namespace = ? AND key = ? LIMIT 1');
+            stmt.bind([r.namespace, r.key]);
+            if (stmt.step()) {
+              provenanceByKey.set(`${r.namespace}::${r.key}`, (stmt.get()[0] as string | null) || 'unknown');
+            }
+            stmt.free();
+          }
+          db.close();
+          filtered = filtered
+            .map(r => ({ ...r, provenanceType: provenanceByKey.get(`${r.namespace}::${r.key}`) || 'unknown' }));
+          if (provenanceFilter?.length) {
+            filtered = filtered.filter(r => provenanceFilter.includes(r.provenanceType!));
+          }
+        } catch {
+          // A requested trust filter fails closed. Unfiltered callers retain
+          // backward-compatible results with an explicit unknown label.
+          filtered = provenanceFilter?.length
+            ? []
+            : filtered.map(r => ({ ...r, provenanceType: 'unknown' }));
+        }
+      }
+
+      if (!provenanceFilter?.length || filtered.length >= limit) {
+        return {
+          success: true,
+          results: filtered.slice(0, limit),
+          searchTime: Date.now() - startTime
+        };
+      }
+      // The ANN window did not contain enough matching provenance rows.
+      // Continue into the filtered SQL path to avoid false-empty/underfilled
+      // results caused by post-filtering only the unfiltered top-k.
     }
 
     // Fall back to brute-force SQLite search
@@ -2882,13 +3155,23 @@ export async function searchEntries(options: {
     const db = new SQL.Database(fileBuffer);
 
     // Get entries with embeddings
-    const searchStmt = db.prepare(
-      effectiveNamespace !== 'all'
-        ? `SELECT id, key, namespace, content, embedding FROM memory_entries WHERE status = 'active' AND namespace = ? LIMIT 1000`
-        : `SELECT id, key, namespace, content, embedding FROM memory_entries WHERE status = 'active' LIMIT 1000`
-    );
+    // ADR-323: build the WHERE clause incrementally so namespace and
+    // provenance filters compose (both, either, or neither).
+    const whereClauses = [`status = 'active'`];
+    const whereParams: (string)[] = [];
     if (effectiveNamespace !== 'all') {
-      searchStmt.bind([effectiveNamespace]);
+      whereClauses.push('namespace = ?');
+      whereParams.push(effectiveNamespace);
+    }
+    if (provenanceFilter?.length) {
+      whereClauses.push(`provenance_type IN (${provenanceFilter.map(() => '?').join(',')})`);
+      whereParams.push(...provenanceFilter);
+    }
+    const searchStmt = db.prepare(
+      `SELECT id, key, namespace, content, embedding, provenance_type FROM memory_entries WHERE ${whereClauses.join(' AND ')} LIMIT 1000`
+    );
+    if (whereParams.length > 0) {
+      searchStmt.bind(whereParams);
     }
     const searchRows: unknown[][] = [];
     while (searchStmt.step()) {
@@ -2897,11 +3180,11 @@ export async function searchEntries(options: {
     searchStmt.free();
     const entries = searchRows.length > 0 ? [{ values: searchRows }] : [];
 
-    const results: { id: string; key: string; content: string; score: number; namespace: string }[] = [];
+    const results: { id: string; key: string; content: string; score: number; namespace: string; provenanceType?: string }[] = [];
 
     if (entries[0]?.values) {
       for (const row of entries[0].values) {
-        const [id, key, ns, content, embeddingJson] = row as [string, string, string, string, string | null];
+        const [id, key, ns, content, embeddingJson, provenanceTypeVal] = row as [string, string, string, string, string | null, string | null];
 
         let score = 0;
 
@@ -2930,7 +3213,8 @@ export async function searchEntries(options: {
             key: key || id.substring(0, 15),
             content: (content || '').substring(0, 60) + ((content || '').length > 60 ? '...' : ''),
             score,
-            namespace: ns || 'default'
+            namespace: ns || 'default',
+            provenanceType: provenanceTypeVal || 'unknown',
           });
         }
       }
@@ -2990,6 +3274,8 @@ export async function listEntries(options: {
   dbPath?: string;
   /** #2073: When true, include the entry's full `content` string in each result. */
   includeContent?: boolean;
+  /** ADR-323: restrict rows to these provenance types. */
+  provenanceFilter?: string[];
 }): Promise<{
   success: boolean;
   entries: {
@@ -3003,10 +3289,23 @@ export async function listEntries(options: {
     hasEmbedding: boolean;
     /** #2073: Present when `includeContent: true` was requested. */
     content?: string;
+    provenanceType?: string;
   }[];
   total: number;
   error?: string;
 }> {
+  if (options.provenanceFilter?.length) {
+    const invalid = options.provenanceFilter.filter(p => !isValidProvenanceType(p));
+    if (invalid.length > 0) {
+      return {
+        success: false,
+        entries: [],
+        total: 0,
+        error: `Invalid provenance filter value(s): ${invalid.join(', ')} — must be one of: ${PROVENANCE_TYPES.join(', ')}`,
+      };
+    }
+  }
+
   // ADR-053: Try AgentDB v3 bridge first
   const bridge = await getBridge();
   if (bridge) {
@@ -3019,7 +3318,8 @@ export async function listEntries(options: {
     namespace,
     limit = 20,
     offset = 0,
-    dbPath: customPath
+    dbPath: customPath,
+    provenanceFilter
   } = options;
 
   const swarmDir = getMemoryRoot();
@@ -3043,12 +3343,19 @@ export async function listEntries(options: {
     // that predate the status column may have NULL after migration.
     // See memory-bridge.ts:bridgeListEntries for full context.
     // Get total count
-    const countStmt = namespace
-      ? db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE (status = 'active' OR status IS NULL) AND namespace = ?`)
-      : db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE (status = 'active' OR status IS NULL)`);
+    const whereClauses = [ACTIVE_MEMORY_ROW_SQL];
+    const whereParams: string[] = [];
     if (namespace) {
-      countStmt.bind([namespace]);
+      whereClauses.push('namespace = ?');
+      whereParams.push(namespace);
     }
+    if (provenanceFilter?.length) {
+      whereClauses.push(`provenance_type IN (${provenanceFilter.map(() => '?').join(',')})`);
+      whereParams.push(...provenanceFilter);
+    }
+    const whereSql = whereClauses.join(' AND ');
+    const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE ${whereSql}`);
+    if (whereParams.length > 0) countStmt.bind(whereParams);
     const countRows: unknown[][] = [];
     while (countStmt.step()) {
       countRows.push(countStmt.get());
@@ -3061,14 +3368,12 @@ export async function listEntries(options: {
     const safeLimit = parseInt(String(limit), 10) || 100;
     const safeOffset = parseInt(String(offset), 10) || 0;
     // #2120 — same NULL-as-active acceptance as the count above.
-    const listStmt = namespace
-      ? db.prepare(`SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at FROM memory_entries WHERE (status = 'active' OR status IS NULL) AND namespace = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
-      : db.prepare(`SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at FROM memory_entries WHERE (status = 'active' OR status IS NULL) ORDER BY updated_at DESC LIMIT ? OFFSET ?`);
-    if (namespace) {
-      listStmt.bind([namespace, safeLimit, safeOffset]);
-    } else {
-      listStmt.bind([safeLimit, safeOffset]);
-    }
+    const listStmt = db.prepare(
+      `SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, provenance_type
+       FROM memory_entries WHERE ${whereSql}
+       ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+    );
+    listStmt.bind([...whereParams, safeLimit, safeOffset]);
     const listRows: unknown[][] = [];
     while (listStmt.step()) {
       listRows.push(listStmt.get());
@@ -3085,12 +3390,13 @@ export async function listEntries(options: {
       updatedAt: string;
       hasEmbedding: boolean;
       content?: string;
+      provenanceType?: string;
     }[] = [];
 
     if (result[0]?.values) {
       for (const row of result[0].values) {
-        const [id, key, ns, content, embedding, accessCount, createdAt, updatedAt] = row as [
-          string, string, string, string, string | null, number, string, string
+        const [id, key, ns, content, embedding, accessCount, createdAt, updatedAt, provenanceTypeVal] = row as [
+          string, string, string, string, string | null, number, string, string, string | null
         ];
         const entry: {
           id: string;
@@ -3102,6 +3408,7 @@ export async function listEntries(options: {
           updatedAt: string;
           hasEmbedding: boolean;
           content?: string;
+          provenanceType?: string;
         } = {
           // #2073: don't truncate id when content is requested — callers
           // (notably memory_export) need the full id to round-trip via import.
@@ -3112,7 +3419,8 @@ export async function listEntries(options: {
           accessCount: accessCount || 0,
           createdAt: createdAt || new Date().toISOString(),
           updatedAt: updatedAt || new Date().toISOString(),
-          hasEmbedding: !!embedding && embedding.length > 10
+          hasEmbedding: !!embedding && embedding.length > 10,
+          provenanceType: provenanceTypeVal || 'unknown'
         };
         if (options.includeContent) {
           entry.content = content || '';
@@ -3179,6 +3487,18 @@ export async function getEntry(options: {
       return { success: false, found: false, error: 'Database not found' };
     }
 
+    // #2735 — see storeEntry's identical gate for the corruption mechanism
+    // this closes. Applies here too because the fallback's access_count
+    // bump is itself a whole-image write, not a lightweight read, even
+    // though this function's contract reads as a "get".
+    if (hasNativeWalSidecars(dbPath)) {
+      return {
+        success: false,
+        found: false,
+        error: await walRefusalError('read/write'),
+      };
+    }
+
     // Ensure schema has all required columns (migration for older DBs)
     await ensureSchemaColumns(dbPath);
 
@@ -3192,7 +3512,7 @@ export async function getEntry(options: {
     const getStmt = db.prepare(`
       SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, tags
       FROM memory_entries
-      WHERE status = 'active'
+      WHERE ${ACTIVE_MEMORY_ROW_SQL}
         AND key = ?
         AND namespace = ?
       LIMIT 1
@@ -3284,15 +3604,7 @@ export async function deleteEntry(options: {
       // #1122: Bridge path must also invalidate the in-memory HNSW index.
       // Without this, deleted vectors remain as ghost entries in search results.
       if (bridgeResult.deleted && hnswIndex?.entries) {
-        // Remove the entry from the HNSW entries map by key+namespace composite
-        for (const [id, entry] of hnswIndex.entries) {
-          if ((entry as any)?.key === options.key && ((entry as any)?.namespace ?? 'default') === (options.namespace ?? 'default')) {
-            hnswIndex.entries.delete(id);
-            break;
-          }
-        }
-        saveHNSWMetadata();
-        rebuildSearchIndex();
+        removeHNSWEntriesByKey(options.key, options.namespace ?? 'default');
       }
       return bridgeResult;
     }
@@ -3320,6 +3632,19 @@ export async function deleteEntry(options: {
       };
     }
 
+    // #2735 — see storeEntry's identical gate for the corruption mechanism
+    // this closes.
+    if (hasNativeWalSidecars(dbPath)) {
+      return {
+        success: false,
+        deleted: false,
+        key,
+        namespace,
+        remainingEntries: 0,
+        error: await walRefusalError('write'),
+      };
+    }
+
     // Ensure schema has all required columns (migration for older DBs)
     await ensureSchemaColumns(dbPath);
 
@@ -3332,7 +3657,7 @@ export async function deleteEntry(options: {
     // Check if entry exists first
     const checkStmt = db.prepare(`
       SELECT id FROM memory_entries
-      WHERE status = 'active'
+      WHERE ${ACTIVE_MEMORY_ROW_SQL}
         AND key = ?
         AND namespace = ?
       LIMIT 1
@@ -3347,7 +3672,7 @@ export async function deleteEntry(options: {
 
     if (!checkResult[0]?.values?.[0]) {
       // Get remaining count before closing
-      const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`);
+      const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE ${ACTIVE_MEMORY_ROW_SQL}`);
       const remainingEntries = countResult[0]?.values?.[0]?.[0] as number || 0;
       db.close();
       return {
@@ -3360,9 +3685,6 @@ export async function deleteEntry(options: {
       };
     }
 
-    // Capture the entry ID for HNSW cleanup
-    const entryId = String(checkResult[0].values[0][0]);
-
     // Delete the entry (soft delete by setting status to 'deleted')
     // Also null out the embedding to clean up vector data from SQLite
     db.run(`
@@ -3372,11 +3694,11 @@ export async function deleteEntry(options: {
           updated_at = strftime('%s', 'now') * 1000
       WHERE key = ?
         AND namespace = ?
-        AND status = 'active'
+        AND ${ACTIVE_MEMORY_ROW_SQL}
     `, [key, namespace]);
 
     // Get remaining count
-    const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE status = 'active'`);
+    const countResult = db.exec(`SELECT COUNT(*) FROM memory_entries WHERE ${ACTIVE_MEMORY_ROW_SQL}`);
     const remainingEntries = countResult[0]?.values?.[0]?.[0] as number || 0;
 
     // Save updated database
@@ -3388,14 +3710,7 @@ export async function deleteEntry(options: {
     // Clean up in-memory HNSW index so ghost vectors don't appear in searches.
     // Remove the entry from the HNSW entries map and invalidate the index.
     // The next search will rebuild the HNSW index from the remaining DB rows.
-    if (hnswIndex?.entries) {
-      hnswIndex.entries.delete(entryId);
-      saveHNSWMetadata();
-      // Invalidate the HNSW index so it rebuilds from DB on next search.
-      // We can't surgically remove a vector from the HNSW graph, so we
-      // clear the entire index; it will be lazily rebuilt from SQLite.
-      rebuildSearchIndex();
-    }
+    if (hnswIndex?.entries) removeHNSWEntriesByKey(key, namespace);
 
     return {
       success: true,

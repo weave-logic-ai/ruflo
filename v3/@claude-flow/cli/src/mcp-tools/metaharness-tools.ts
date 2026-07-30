@@ -50,9 +50,17 @@
 import type { MCPTool, getProjectCwd as _ } from './types.js';
 import { getProjectCwd } from './types.js';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runFlywheelWorker } from '../services/harness-flywheel-runtime.js';
+import { evaluatePolicyRequest } from '../services/policy-runtime.js';
+import {
+  listFlywheelReceipts,
+  promoteFlywheelCandidate,
+  readFlywheelTransactionState,
+  verifyFlywheelLedger,
+} from '../services/flywheel-transaction.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -198,7 +206,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   {
     name: 'metaharness_genome',
-    description: 'ADR-150 — 7-section categorical readiness report from `metaharness genome <path>` (repo_type / agent_topology / risk_score / mcp_surface / test_confidence / publish_readiness). Use when you need the categorical view (vs numeric score). Pair with metaharness_score for the full readiness picture — score-alone is wrong because two harnesses with the same harnessFit can have very different agent_topology and mcp_surface. ' + MCP_SUCCESS_SEMANTIC,
+    description: 'ADR-150 — 7-section categorical readiness report from `metaharness genome <path>` (repo_type / agent_topology / risk_score / mcp_surface / test_confidence / publish_readiness). Upstream needs-work/blocked exit statuses are valid verdicts and return successfully as data.verdict + data.verdictExitCode; only a missing or malformed report is an error. Use when you need the categorical view (vs numeric score). Pair with metaharness_score for the full readiness picture — score-alone is wrong because two harnesses with the same harnessFit can have very different agent_topology and mcp_surface. ' + MCP_SUCCESS_SEMANTIC,
     category: 'metaharness',
     inputSchema: {
       type: 'object',
@@ -378,7 +386,7 @@ export const metaharnessTools: MCPTool[] = [
   },
   // ───────────────────────────────────────────────────────────────────────
   // ADR-153 — @metaharness/darwin integration (3 tools).
-  // Backed by the separate `@metaharness/darwin@~0.3.1` npm package, NOT
+  // Backed by the separate `@metaharness/darwin@~0.8.0` npm package, NOT
   // the umbrella `metaharness`. Plugin scripts shell out via _darwin.mjs.
   // Same {success, data, degraded, exitCode} contract.
   // ───────────────────────────────────────────────────────────────────────
@@ -607,6 +615,115 @@ export const metaharnessTools: MCPTool[] = [
       if (input.alertOnInvalid === true) args.push('--alert-on-invalid');
       const r = await runScript('gepa.mjs', args);
       return { success: r.success, data: r.json, degraded: r.degraded, exitCode: r.exitCode };
+    },
+  },
+  {
+    name: 'metaharness_flywheel',
+    description: 'ADR-322 — evaluate candidates into immutable receipts, inspect the append-only promotion ledger, and explicitly promote one signed receipt with atomic compare-and-swap semantics. Use when running governed flywheel evaluation or promotion; evaluation never mutates the active champion, and promotion requires confirm=true plus a locally approved Ed25519 public-key PEM path.',
+    category: 'metaharness',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        operation: { type: 'string', enum: ['run', 'status', 'receipts', 'history', 'promote'], description: 'Flywheel operation', default: 'status' },
+        projectRoot: { type: 'string', description: 'Target project root (default: active project cwd)' },
+        receiptId: { type: 'string', description: 'Receipt content ID for promote' },
+        sample: { type: 'number', description: 'Maximum harvested evaluation sample', default: 40 },
+        proposer: { type: 'string', enum: ['local', 'auto', 'darwin'], description: 'Candidate proposer. Auto fallback is evaluation-only; explicit darwin fails closed when no compatible adapter is installed.', default: 'auto' },
+        privateKeyPath: { type: 'string', description: 'Local Ed25519 private-key PEM path for signing run receipts; must be paired with publicKeyPath' },
+        publicKeyPath: { type: 'string', description: 'Local Ed25519 public-key PEM path used to sign a run or approve a promotion' },
+        confirm: { type: 'boolean', description: 'Required for promote; never inferred', default: false },
+        maxConcurrency: { type: 'number', description: 'ADR-324 hard local candidate-evaluation concurrency cap (1-8)', default: 2 },
+        timeoutMs: { type: 'number', description: 'Abort concurrent evaluation after this wall-clock limit', default: 120000 },
+        anchorPath: { type: 'string', description: 'Project-contained human-labelled anchor JSON; requires anchorHash' },
+        anchorHash: { type: 'string', description: 'Pinned sha256 of canonical anchor tasks; requires anchorPath' },
+        anchorManifestPath: { type: 'string', description: 'Project-contained anchor manifest path (default .claude/eval/flywheel-anchor.manifest.json)' },
+        approvalIds: { type: 'array', items: { type: 'string' }, description: 'Scoped ADR-324 approval IDs for privileged promotion' },
+      },
+      required: ['operation'],
+    },
+    handler: async (input) => {
+      const operation = String(input.operation ?? 'status');
+      const projectRoot = resolve(String(input.projectRoot ?? getProjectCwd()));
+      if (operation === 'status') {
+        return {
+          success: true,
+          data: {
+            state: readFlywheelTransactionState(projectRoot),
+            ledger: verifyFlywheelLedger(projectRoot),
+          },
+          degraded: false,
+          exitCode: 0,
+        };
+      }
+      if (operation === 'receipts') {
+        const data = listFlywheelReceipts(projectRoot).map(({ receipt, state }) => ({
+          receiptId: receipt.payload.receiptId,
+          anchorRef: receipt.payload.anchorRef,
+          candidateId: receipt.payload.candidateId,
+          baselineRef: receipt.payload.baselineRef,
+          decision: receipt.payload.decision,
+          signed: !!receipt.signature,
+          issuedAt: receipt.payload.issuedAt,
+          state,
+        }));
+        return { success: true, data, degraded: false, exitCode: 0 };
+      }
+      if (operation === 'history') {
+        const state = readFlywheelTransactionState(projectRoot);
+        return { success: true, data: { ledgerHead: state.ledgerHead, commits: state.commits }, degraded: false, exitCode: 0 };
+      }
+      if (operation === 'run') {
+        const privateKeyPath = input.privateKeyPath ? resolve(String(input.privateKeyPath)) : undefined;
+        const publicKeyPath = input.publicKeyPath ? resolve(String(input.publicKeyPath)) : undefined;
+        if (!!privateKeyPath !== !!publicKeyPath) {
+          return { success: false, data: { reason: 'privateKeyPath and publicKeyPath must be supplied together' }, degraded: false, exitCode: 2 };
+        }
+        const data = await runFlywheelWorker(projectRoot, {
+          optInOverride: true,
+          sample: Number(input.sample ?? 40),
+          proposer: String(input.proposer ?? 'auto') as 'local' | 'auto' | 'darwin',
+          receiptPrivateKeyPem: privateKeyPath ? readFileSync(privateKeyPath, 'utf8') : undefined,
+          receiptPublicKeyPem: publicKeyPath ? readFileSync(publicKeyPath, 'utf8') : undefined,
+          maxConcurrency: Number(input.maxConcurrency ?? 2),
+          evaluationTimeoutMs: Number(input.timeoutMs ?? 120_000),
+          anchorPath: input.anchorPath ? String(input.anchorPath) : undefined,
+          anchorHash: input.anchorHash ? String(input.anchorHash) : undefined,
+          anchorManifestPath: input.anchorManifestPath ? String(input.anchorManifestPath) : undefined,
+        });
+        return { success: data.ran, data, degraded: false, exitCode: data.ran ? 0 : 1 };
+      }
+      if (operation === 'promote') {
+        if (!input.receiptId || !input.publicKeyPath) {
+          return { success: false, data: { reason: 'receiptId and publicKeyPath are required' }, degraded: false, exitCode: 2 };
+        }
+        const policy = await evaluatePolicyRequest({
+          identity: { id: 'metaharness-mcp', type: 'agent', roles: ['optimizer'] },
+          action: {
+            type: 'metaharness.candidate.promote',
+            resource: String(input.receiptId),
+            environment: 'production',
+            destructive: true,
+          },
+          context: {
+            approvalIds: Array.isArray(input.approvalIds) ? input.approvalIds.map(String) : undefined,
+          },
+        }, projectRoot);
+        if (policy.enforcedOutcome !== 'allowed') {
+          return {
+            success: false,
+            data: { reason: `policy-${policy.enforcedOutcome}:${policy.reason}`, policyReceiptId: policy.receiptId },
+            degraded: false,
+            exitCode: 1,
+          };
+        }
+        const publicKey = readFileSync(resolve(String(input.publicKeyPath)), 'utf8');
+        const data = await promoteFlywheelCandidate(projectRoot, String(input.receiptId), {
+          confirm: input.confirm === true,
+          trustedPublicKeys: new Set([publicKey]),
+        });
+        return { success: data.success, data, degraded: false, exitCode: data.success ? 0 : 1 };
+      }
+      return { success: false, data: { reason: `unsupported operation: ${operation}` }, degraded: false, exitCode: 2 };
     },
   },
 ];

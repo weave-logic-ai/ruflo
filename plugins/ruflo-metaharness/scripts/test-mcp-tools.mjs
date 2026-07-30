@@ -74,7 +74,7 @@ async function main() {
   // ──────────────────────────────────────────────────────────────────
   console.log('Phase 1 — module shape');
   assert(Array.isArray(tools), 'metaharnessTools is an array');
-  assert(tools.length === 15, `15 tools registered (got ${tools.length})`);
+  assert(tools.length === 16, `16 tools registered (got ${tools.length})`);
 
   const expectedNames = new Set([
     'metaharness_score',
@@ -98,6 +98,8 @@ async function main() {
     'metaharness_learn',
     // @metaharness/darwin@0.8.0 — GEPA library surface (genome ops)
     'metaharness_gepa',
+    // ADR-322 — in-process governed evaluation and atomic promotion
+    'metaharness_flywheel',
   ]);
   const actualNames = new Set(tools.map((t) => t.name));
   for (const name of expectedNames) {
@@ -231,10 +233,34 @@ async function main() {
   // ──────────────────────────────────────────────────────────────────
   console.log('\nPhase 4 — positive-case data shape (iter 43)');
 
-  const { writeFileSync, mkdtempSync } = await import('node:fs');
+  const { writeFileSync, mkdtempSync, mkdirSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
   const { join: pjoin } = await import('node:path');
   const tmp = mkdtempSync(pjoin(tmpdir(), 'mcp-positive-'));
+
+  // #2626 — upstream deliberately exits 2 for a valid `blocked` genome.
+  // The wrapper must preserve that report as data instead of converting it
+  // into an input/system error at the MCP boundary.
+  const genomeTool = tools.find((t) => t.name === 'metaharness_genome');
+  if (genomeTool) {
+    const blockedRepo = pjoin(tmp, 'blocked-repo');
+    mkdirSync(blockedRepo);
+    const r = await genomeTool.handler({ path: blockedRepo });
+    if (!r.degraded) {
+      assert(r.success === true,
+        'genome blocked verdict: wrapper succeeds with a valid report (#2626)');
+      assert(r.exitCode === 0,
+        'genome blocked verdict: wrapper exitCode === 0 (#2626)');
+      assert(r.data?.verdict === 'blocked',
+        `genome blocked verdict: data.verdict === blocked (got ${r.data?.verdict})`);
+      assert(r.data?.verdictExitCode === 2,
+        `genome blocked verdict: preserves upstream exit 2 (got ${r.data?.verdictExitCode})`);
+      assert(typeof r.data?.risk_score === 'number' && r.data.risk_score >= 0.7,
+        `genome blocked verdict: risk_score >= 0.7 (got ${r.data?.risk_score})`);
+    } else {
+      console.log(`    ⊘ genome: metaharness absent — graceful skip`);
+    }
+  }
 
   // metaharness_similarity — full positive case (no @metaharness/* needed)
   const simTool = tools.find((t) => t.name === 'metaharness_similarity');

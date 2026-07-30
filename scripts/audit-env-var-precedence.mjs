@@ -74,12 +74,24 @@ const KNOWN_ESCAPE_HATCHES = new Set([
   'RUFLO_AI_BUDGET_DISABLE',        // #2663 — hard kill switch for the repository-supervisor AI-cost fuse (services/global-ai-budget.ts). Ops-level "disable this whole subsystem" toggle, same pattern as RUFLO_AI_DEDUP_DISABLE above
   'RUFLO_METAHARNESS_SKIP_LOCAL',   // plugins/ruflo-metaharness/scripts/_invoke.mjs — CI seam that forces the invoke shim off the local vendored metaharness and onto the pinned-cache resolver. Plugin script has no CLI-flag surface (invoked internally by MCP tools)
   'RUFLO_HELPERS_LOCKED',           // v3.30.0 — env-level opt-out for the .claude/helpers/ auto-refresh (init/helper-refresh.ts). Sibling to the `.LOCKED` marker file; helper-refresh runs from a hook, not a user-typed CLI command — no per-invocation flag surface. See CLAUDE.md "Concurrent-session helper corruption" for rationale
+  'CLAUDE_FLOW_DISABLE_NATIVE_ROUTER', // Test/lock-constrained MCP escape hatch: forces hooks routing onto the deterministic pure-JS backend. The router is process-lifetime state, not owned by one CLI invocation.
+  'RUFLO_FLYWHEEL_ALLOW_BUILTIN_ANCHOR', // Explicit compatibility escape hatch for pre-ADR-331 downstream behavior. Intentionally env-only and visibly unsafe-by-choice; normal CLI/MCP use supplies a project anchor path + hash.
 
   // ── Embedding substrate toggles (3.25.x — opt-in tier + fail-closed ops flag) ─
   'RUFLO_REQUIRE_REAL_EMBEDDINGS', // Fail-closed "no stubs" strict mode — deploy/CI ops toggle, not a per-invocation CLI flag (ADR-176)
   'RUFLO_EMBED_WASM_PKG',          // Opt-in specifier for the optional WASM embedder tier — env-only deployment config, inert by default
   'RUFLO_LATTICE_WASM_PKG',        // Back-compat alias of RUFLO_EMBED_WASM_PKG
   'RUFLO_EMBED_MODEL',             // Model name for the optional WASM embedder — substrate config, env-only
+
+  // ── ADR-320 MCP Composition Inspector + ChannelGuard (this ADR) ─────────────
+  // Read inside @claude-flow/security/src/mcp-composition-inspector.ts and
+  // @claude-flow/hooks/src/workers/channel-guard-worker.ts respectively
+  // (outside this audit's SCAN_ROOTS today — registered anyway per the same
+  // "MUST be registered in audit-env-var-precedence.mjs with rationale"
+  // requirement ADR-144/145/320-plugin-scanner already impose on their flags,
+  // see CLAUDE_FLOW_STRICT_PUBLISH below for the precedent).
+  'CLAUDE_FLOW_MCP_COMPOSITION_BLOCK', // Opt-in strict mode for the Composition Inspector (evaluateToolComposition) — default warn+log, '1'/'true' switches a flagged tool chain to blocked. Deploy/CI ops posture toggle read fresh per scan, not a per-invocation CLI flag; no interactive CLI command owns a single MCP tool-composition scan's lifetime.
+  'CLAUDE_FLOW_SECURITY_CHANNEL_GATE', // Kill switch for the ChannelGuard inter-agent message sanitization gate (guardChannelMessage, wired into SwarmCommunication.sendMessage) — default enabled, '0' disables for trusted internal environments. Same escape-hatch shape as CLAUDE_FLOW_DISABLE_BRIDGE above; the gate runs inside the swarm-communication hot path, not behind a user-typed command.
 
   // ── Feature flags (set by init into settings.json, not user-typed CLI) ──────
   'CLAUDE_FLOW_V3_ENABLED',
@@ -145,6 +157,14 @@ const KNOWN_ESCAPE_HATCHES = new Set([
   // CLI-flag-equivalent and takes precedence (memory-tools.ts:1079-1109). The
   // env is the documented operator fallback.
   'CLAUDE_FLOW_MEMORY_SEARCH_NAMESPACES',
+
+  // ── Orchestrator-injected worker identity label (not an auth credential) ───
+  // ADR-324 propagates this value to policy receipts so concurrent workers can
+  // be distinguished. It is intentionally env-only: exposing a CLI flag would
+  // imply that an agent may select its security principal. Human approval
+  // issuance still requires an authenticated identity adapter and never trusts
+  // this label as issuer proof.
+  'CLAUDE_FLOW_PRINCIPAL_ID',
 
   // ── OS / runtime standard env ────────────────────────────────────────────────
   'HOME',

@@ -11,10 +11,9 @@
  *   4. GATE the winner through the shipped runHarnessLoop on the HELD-OUT split:
  *      held_out_improves AND redblue(anchor-no-regress) AND drift<=thr AND
  *      replay-deterministic AND receipt_coverage AND canary-no-worse.
- *   5. On accept → APPLY locally (the install self-optimizes on its own data; no
- *      signing needed because nothing is propagated), CHAIN to the previous
- *      champion, and record the attempt in the improvement ledger. Also STAGE
- *      the unsigned champion for optional promotion to the signed global channel.
+ *   5. On accept → emit + persist an immutable evaluation receipt. Evaluation
+ *      never mutates active policy. Explicit promotion is handled by the
+ *      ADR-322A transaction service.
  *
  * Trust split: LOCAL self-optimization is unsigned (an install trusting its own
  * measured gate); CROSS-install propagation still requires the config-signed
@@ -27,6 +26,16 @@ import { hashCorpus } from './harness-benchmark.js';
 import { harvestSelfSupervisedTasks, blendCorpus, type HarvestPattern } from './harness-corpus-harvester.js';
 import { applyChampionParams } from '../config/harness-feedback-applier.js';
 import { appendLedger, bootstrapDeltaCILow, type LedgerEntry } from './harness-improvement-ledger.js';
+import {
+  createFlywheelReceipt,
+  sha256Ref,
+  type FlywheelEvaluationReceipt,
+} from './flywheel-receipt.js';
+import {
+  readFlywheelTransactionState,
+  registerFlywheelReceipt,
+} from './flywheel-transaction.js';
+import { runBoundedPool } from './bounded-worker-pool.js';
 
 export interface RetrievalConfig { alpha: number; subjectWeight: number; mmrLambda: number; bodyWeight: number; typePenaltyFactor: number; }
 export const DEFAULT_CONFIG: RetrievalConfig = { alpha: 0.5, subjectWeight: 2.0, mmrLambda: 0.7, bodyWeight: 1.0, typePenaltyFactor: 1.0 };
@@ -36,11 +45,31 @@ export interface AnchorTask { id: string; input: { id: string; q: string }; expe
 
 export interface FlywheelDeps {
   getPatterns: () => HarvestPattern[] | Promise<HarvestPattern[]>;
-  search: (query: string, config: RetrievalConfig) => Promise<RankedItem[]> | RankedItem[];
+  search: (
+    query: string,
+    config: RetrievalConfig,
+    signal?: AbortSignal,
+  ) => Promise<RankedItem[]> | RankedItem[];
   anchorTasks: AnchorTask[];
   activeParams?: () => Partial<RetrievalConfig> | null;
   sample?: number;
   now?: number;
+  lineageId?: string;
+  evaluationRunId?: string;
+  safetyEnvelopeRef?: string;
+  /** Hash of the project-specific human-labelled objective. */
+  anchorRef?: string;
+  requestedProposer?: 'auto' | 'local' | 'darwin';
+  effectiveProposer?: 'local' | 'darwin';
+  proposerSubstitution?: string;
+  receiptPrivateKeyPem?: string;
+  receiptPublicKeyPem?: string;
+  bootstrapIterations?: number;
+  /** Candidate policies supplied by an external proposer archive (ADR-322B). */
+  candidatePolicies?: RetrievalConfig[];
+  /** ADR-324: hard local cap for concurrent candidate/task evaluation. */
+  maxConcurrency?: number;
+  evaluationTimeoutMs?: number;
 }
 
 export interface FlywheelResult {
@@ -54,6 +83,11 @@ export interface FlywheelResult {
   anchorRegressed?: boolean;
   championRef?: string;
   corpusVersion?: string;
+  candidateConfig?: RetrievalConfig;
+  receiptId?: string;
+  receipt?: FlywheelEvaluationReceipt;
+  promotable?: boolean;
+  legacyDeprecation?: boolean;
 }
 
 const EPS = 1e-3;
@@ -76,7 +110,7 @@ function grade(ranked: RankedItem[], expected: unknown): number {
   return idx >= 0 ? 1 / (idx + 1) : 0;
 }
 
-function neighbors(base: RetrievalConfig): RetrievalConfig[] {
+export function retrievalPolicyNeighbors(base: RetrievalConfig): RetrievalConfig[] {
   const steps: Record<keyof RetrievalConfig, number> = { alpha: 0.1, subjectWeight: 0.5, mmrLambda: 0.1, bodyWeight: 0.5, typePenaltyFactor: 0.25 };
   const out: RetrievalConfig[] = [];
   const seen = new Set<string>();
@@ -113,7 +147,7 @@ function split<T extends { id: string }>(tasks: T[], frac: number): { train: T[]
  * Returns a rich result AND (as a side effect) appends to the improvement ledger
  * and — on accept — applies the champion locally + chains it.
  */
-export async function runFlywheelTick(projectRoot: string, deps: FlywheelDeps): Promise<FlywheelResult> {
+export async function evaluateFlywheelCandidate(projectRoot: string, deps: FlywheelDeps): Promise<FlywheelResult> {
   try {
     const patterns = await deps.getPatterns();
     if (!patterns || patterns.length < 8) return { ran: false, reason: 'store too small to harvest a corpus' };
@@ -124,7 +158,9 @@ export async function runFlywheelTick(projectRoot: string, deps: FlywheelDeps): 
     const anchorIdSet = new Set(blended.anchorIds);
 
     const baseline: RetrievalConfig = { ...DEFAULT_CONFIG, ...(deps.activeParams?.() ?? {}) };
-    const candidates = neighbors(baseline);
+    const candidates = deps.candidatePolicies?.length
+      ? deps.candidatePolicies.map((candidate) => ({ ...candidate }))
+      : retrievalPolicyNeighbors(baseline);
 
     // OBJECTIVE = the human-labeled anchor (the relevance we actually care about,
     // where headroom is known to exist). GUARD = the large, growing harvested set
@@ -137,12 +173,32 @@ export async function runFlywheelTick(projectRoot: string, deps: FlywheelDeps): 
     // Precompute retrieval for baseline + all candidates over every task (async
     // I/O up front → the harness scoring stays pure/sync).
     const cache = new Map<string, RankedItem[]>();
-    const configs = [baseline, ...candidates];
-    for (const cfg of configs) {
-      for (const t of blended.tasks) {
-        const q = (t.input as { q: string }).q;
-        cache.set(`${t.id}::${cfgKey(cfg)}`, (await deps.search(q, cfg)) || []);
-      }
+    const configs = [...new Map(
+      [baseline, ...candidates].map((config) => [cfgKey(config), config]),
+    ).values()];
+    const evalTasks = configs.flatMap((cfg) => blended.tasks.map((t) => {
+      const cacheKey = `${t.id}::${cfgKey(cfg)}`;
+      return {
+        id: cacheKey,
+        run: async (signal: AbortSignal) => {
+          if (signal.aborted) throw signal.reason;
+          return (await deps.search((t.input as { q: string }).q, cfg, signal)) || [];
+        },
+      };
+    }));
+    const batch = await runBoundedPool(evalTasks, {
+      maxConcurrency: deps.maxConcurrency ?? 2,
+      timeoutMs: deps.evaluationTimeoutMs ?? 120_000,
+    });
+    for (const item of batch.results) {
+      if (item.status === 'fulfilled') cache.set(item.id, item.value ?? []);
+    }
+    const failedEvaluations = batch.results.filter((item) => item.status !== 'fulfilled');
+    if (failedEvaluations.length > 0) {
+      return {
+        ran: false,
+        reason: `candidate evaluation incomplete (${failedEvaluations.length}/${batch.results.length}); peak concurrency ${batch.peakConcurrency}`,
+      };
     }
     const evalFn = (input: unknown, cfg: RetrievalConfig) => cache.get(`${(input as { id: string }).id}::${cfgKey(cfg)}`) ?? [];
     const gradeFn = (output: unknown, expected: unknown) => grade(output as RankedItem[], expected);
@@ -197,7 +253,77 @@ export async function runFlywheelTick(projectRoot: string, deps: FlywheelDeps): 
     const heldDeltas = held.map((t) => heldScoreFor(candidate, t) - heldScoreFor(baseline, t));
     const deltaCILow = bootstrapDeltaCILow(heldDeltas);
     const significant = deltaCILow > 0;
-    const finalAccept = result.accepted && significant;
+    const provisionalGates = Object.fromEntries(Object.entries(result.verdict?.terms ?? {}).map(([k, v]) => [k, v.pass]));
+    const txState = readFlywheelTransactionState(projectRoot);
+    const safetyEnvelopeRef = deps.safetyEnvelopeRef ?? sha256Ref(JSON.stringify({
+      schema: 'ruflo.safety-envelope/local-default-v1',
+      authorizationExpansion: false,
+      networkExpansion: false,
+      spendExpansion: false,
+    }));
+    const receipt = createFlywheelReceipt({
+      lineageId: deps.lineageId,
+      evaluationRunId: deps.evaluationRunId,
+      baselineRef: refOf(baseline),
+      expectedLedgerHead: txState.ledgerHead,
+      candidatePolicy: candidate as unknown as Record<string, unknown>,
+      safetyEnvelopeRef,
+      anchorRef: deps.anchorRef,
+      requestedProposer: deps.requestedProposer ?? 'local',
+      effectiveProposer: deps.effectiveProposer ?? 'local',
+      proposerSubstitution: deps.proposerSubstitution,
+      corpusVersion: blended.version,
+      corpusHash: blended.corpusHash,
+      baselineScore,
+      candidateScore,
+      heldOutDeltas: heldDeltas,
+      frozenAnchorRegression: guardRegressed ? 1 : 0,
+      gates: provisionalGates,
+      resourceEvidence: {
+        p95LatencyMicros: 0,
+        costMicrosPerTask: 0,
+        tokensPerTask: 0,
+        failureRate: '0',
+        evaluationCostMicros: 0,
+        currency: 'USD',
+      },
+      evidence: {
+        corpusRoles: {
+          selectionTaskIds: train.map((task) => task.id),
+          promotionHoldoutTaskIds: held.map((task) => task.id),
+          guardTaskIds: guard.map((task) => task.id),
+        },
+        verification: {
+          redblue: result.verify?.redblue ?? 'SKIPPED',
+          drift: result.verify?.drift ?? -1,
+          driftThreshold: result.verify?.driftThreshold ?? 0.2,
+          driftVerdict: result.verify?.driftVerdict ?? 'skipped',
+          adversarialPass: result.verify?.adversarialPass ?? false,
+        },
+        canary: {
+          candidate: result.canary?.candidate ?? {},
+          baseline: result.canary?.baseline ?? {},
+          pass: result.canary?.pass ?? false,
+        },
+      },
+      termVerification: Object.keys(provisionalGates).map((term) => ({
+        term,
+        verification: 'recomputed' as const,
+        evidenceRef: sha256Ref(JSON.stringify({
+          term,
+          corpusHash: blended.corpusHash,
+          heldOutDeltas: heldDeltas,
+          verification: result.verify,
+          canary: result.canary,
+        })),
+      })),
+      now: deps.now,
+      privateKeyPem: deps.receiptPrivateKeyPem,
+      publicKeyPem: deps.receiptPublicKeyPem,
+      bootstrapIterations: deps.bootstrapIterations,
+    });
+    await registerFlywheelReceipt(projectRoot, receipt, deps.now ?? Date.now());
+    const finalAccept = result.accepted && significant && receipt.payload.decision === 'accepted';
 
     const entry: LedgerEntry = {
       ts: deps.now ?? Date.now(),
@@ -207,28 +333,49 @@ export async function runFlywheelTick(projectRoot: string, deps: FlywheelDeps): 
       baselineScore, candidateScore, delta: candidateScore - baselineScore,
       deltaCILow, significant, loopAccepted: result.accepted,
       anchorRegressed, accepted: finalAccept,
-      gates: Object.fromEntries(Object.entries(result.verdict?.terms ?? {}).map(([k, v]) => [k, v.pass])),
+      gates: provisionalGates,
       reason: finalAccept ? result.reason : (result.accepted ? `held back — improvement not significant (CI low ${deltaCILow.toFixed(4)})` : result.reason),
     };
 
-    let applied = false;
-    if (finalAccept && result.manifest) {
-      entry.championRef = refOf(candidate);
-      // Apply locally (self-optimization) + chain to the previous champion.
-      const ap = applyChampionParams(projectRoot, {
-        championId: refOf(candidate), params: candidate as unknown as Record<string, unknown>,
-        layer: 'repo/local', previous: refOf(baseline), now: deps.now,
-      });
-      applied = ap.applied;
-    }
     appendLedger(`${projectRoot}/.claude-flow/metrics`, entry);
 
     return {
-      ran: true, reason: entry.reason, accepted: finalAccept, applied,
+      ran: true, reason: entry.reason, accepted: finalAccept, applied: false,
       baselineScore, candidateScore, delta: candidateScore - baselineScore,
-      anchorRegressed, championRef: entry.championRef, corpusVersion: blended.version,
+      anchorRegressed, championRef: finalAccept ? refOf(candidate) : undefined,
+      corpusVersion: blended.version, candidateConfig: candidate,
+      receiptId: receipt.payload.receiptId, receipt, promotable: finalAccept && !!receipt.signature,
     };
   } catch (e) {
     return { ran: false, reason: `error: ${(e as Error)?.message ?? e}` };
   }
+}
+
+/**
+ * Compatibility wrapper. New callers get evaluation-only semantics. The legacy
+ * implicit apply path exists for one release behind an explicit opt-in flag.
+ */
+export async function runFlywheelTick(projectRoot: string, deps: FlywheelDeps): Promise<FlywheelResult> {
+  const result = await evaluateFlywheelCandidate(projectRoot, deps);
+  if (
+    process.env.RUFLO_FLYWHEEL_LEGACY_APPLY === '1'
+    && result.accepted
+    && result.candidateConfig
+    && result.championRef
+  ) {
+    const applied = applyChampionParams(projectRoot, {
+      championId: result.championRef,
+      params: result.candidateConfig as unknown as Record<string, unknown>,
+      layer: 'repo/local',
+      previous: result.receipt?.payload.baselineRef,
+      now: deps.now,
+    });
+    return {
+      ...result,
+      applied: applied.applied,
+      legacyDeprecation: true,
+      reason: `${result.reason}; deprecated implicit apply path`,
+    };
+  }
+  return result;
 }
