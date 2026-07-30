@@ -452,6 +452,9 @@ grok mcp doctor ruflo
 
 # ── Dogfood / develop the harness itself ──
 cd /path/to/ruflo
+git fetch upstream && git merge upstream/main
+./scripts/use-local-ruflo.sh          # build + npm link → `ruflo` on PATH
+ruflo --version && ruflo mcp tools | grep team_
 node scripts/bench-grok-host-conformance.mjs
 ```
 
