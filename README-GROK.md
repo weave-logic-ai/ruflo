@@ -41,14 +41,19 @@ Build Ruflo once, then point **any** project’s MCP at that binary:
 ```bash
 # --- once: build the harness (inside the ruflo clone) ---
 cd /path/to/ruflo             # this repo
-cd v3 && pnpm install && pnpm --filter @claude-flow/cli build
+git fetch upstream && git merge upstream/main   # stay current with ruvnet
+cd v3 && pnpm install && pnpm --filter @claude-flow/cli... build
 # binary: /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js
+
+# Make the shell `ruflo` command use this tree (npm global link):
+./scripts/use-local-ruflo.sh
+# which ruflo → …/dev/ruflo/ruflo/bin/ruflo.js
 
 # --- for each external app ---
 cd /path/to/your-app          # ← different directory
 
 # Scaffold Grok files into *your-app* using the local CLI:
-node /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js init --grok
+ruflo init --grok
 # or:  node /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js init --grok --force
 ```
 
@@ -444,10 +449,10 @@ npx -y ruflo@latest doctor
 grok mcp doctor ruflo
 
 # ── External app (Path B, local CLI) ──
-# once: cd /path/to/ruflo/v3 && pnpm --filter @claude-flow/cli build
+# once: cd /path/to/ruflo && ./scripts/use-local-ruflo.sh
 cd /path/to/your-app
-node /path/to/ruflo/v3/@claude-flow/cli/bin/cli.js init --grok
-# set .grok/config.toml args to that same bin/cli.js, restart Grok
+ruflo init --grok
+# set .grok/config.toml args to monorepo bin/cli.js (or keep npx after publish)
 grok mcp doctor ruflo
 
 # ── Dogfood / develop the harness itself ──
