@@ -1200,6 +1200,8 @@ export async function bridgeListEntries(options: {
   includeContent?: boolean;
   /** ADR-323: restrict rows to these provenance types. */
   provenanceFilter?: string[];
+  /** WEFT-670: require entries to include all of these tags (AND). */
+  tags?: string[];
 }): Promise<{
   success: boolean;
   entries: {
@@ -1214,6 +1216,8 @@ export async function bridgeListEntries(options: {
     /** #2073: Present when `includeContent: true` was requested. */
     content?: string;
     provenanceType?: string;
+    /** WEFT-670: tag set stored with the entry (empty array when none). */
+    tags?: string[];
   }[];
   total: number;
   error?: string;
@@ -1225,7 +1229,7 @@ export async function bridgeListEntries(options: {
   if (!ctx) return null;
 
   try {
-    const { namespace, limit = 20, offset = 0, provenanceFilter } = options;
+    const { namespace, limit = 20, offset = 0, provenanceFilter, tags: requiredTags } = options;
     if (provenanceFilter?.some(p => !isValidProvenanceType(p))) return null;
 
     const filters: string[] = [];
@@ -1250,30 +1254,54 @@ export async function bridgeListEntries(options: {
     // status column.
     const statusFilter = ACTIVE_MEMORY_ROW_SQL;
 
-    // Count
+    // WEFT-670: tags are JSON TEXT — filter/paginate in process when set.
+    const tagFilter = Array.isArray(requiredTags) && requiredTags.length > 0
+      ? requiredTags.filter(t => typeof t === 'string' && t.length > 0)
+      : [];
+    const safeLimit = parseInt(String(limit), 10) || 20;
+    const safeOffset = parseInt(String(offset), 10) || 0;
+    const fetchLimit = tagFilter.length > 0 ? 100000 : safeLimit;
+    const fetchOffset = tagFilter.length > 0 ? 0 : safeOffset;
+
+    // Count (pre-tag-filter). With tag filter, total is adjusted after filtering.
     let total = 0;
-    try {
-      const countStmt = ctx.db.prepare(
-        `SELECT COUNT(*) as cnt FROM memory_entries WHERE ${statusFilter} ${extraFilter}`
-      );
-      const countRow = countStmt.get(...filterParams);
-      total = countRow?.cnt ?? 0;
-    } catch {
-      return null;
+    if (tagFilter.length === 0) {
+      try {
+        const countStmt = ctx.db.prepare(
+          `SELECT COUNT(*) as cnt FROM memory_entries WHERE ${statusFilter} ${extraFilter}`
+        );
+        const countRow = countStmt.get(...filterParams);
+        total = countRow?.cnt ?? 0;
+      } catch {
+        return null;
+      }
     }
 
     // List
     const entries: any[] = [];
     try {
+      // WEFT-670: include tags so export/list can round-trip them.
       const stmt = ctx.db.prepare(`
-        SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, provenance_type
+        SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, provenance_type, tags
         FROM memory_entries
         WHERE ${statusFilter} ${extraFilter}
         ORDER BY updated_at DESC
         LIMIT ? OFFSET ?
       `);
-      const rows = stmt.all(...filterParams, limit, offset);
+      const rows = stmt.all(...filterParams, fetchLimit, fetchOffset);
       for (const row of rows) {
+        let tags: string[] = [];
+        if (row.tags) {
+          try {
+            const parsed = typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags;
+            if (Array.isArray(parsed)) {
+              tags = parsed.filter((t: unknown): t is string => typeof t === 'string');
+            }
+          } catch { /* invalid tags JSON */ }
+        }
+        if (tagFilter.length > 0 && !tagFilter.every(t => tags.includes(t))) {
+          continue;
+        }
         const entry: Record<string, unknown> = {
           // #2073: don't truncate id when content is requested — callers
           // (notably memory_export) need the full id to round-trip via import.
@@ -1286,6 +1314,7 @@ export async function bridgeListEntries(options: {
           updatedAt: row.updated_at || new Date().toISOString(),
           hasEmbedding: !!(row.embedding && String(row.embedding).length > 10),
           provenanceType: row.provenance_type || 'unknown',
+          tags,
         };
         if (options.includeContent) {
           entry.content = row.content || '';
@@ -1294,6 +1323,15 @@ export async function bridgeListEntries(options: {
       }
     } catch {
       return null;
+    }
+
+    if (tagFilter.length > 0) {
+      total = entries.length;
+      return {
+        success: true,
+        entries: entries.slice(safeOffset, safeOffset + safeLimit),
+        total,
+      };
     }
 
     return { success: true, entries, total };

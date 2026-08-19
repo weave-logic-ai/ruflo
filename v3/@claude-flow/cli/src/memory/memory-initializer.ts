@@ -3276,6 +3276,8 @@ export async function listEntries(options: {
   includeContent?: boolean;
   /** ADR-323: restrict rows to these provenance types. */
   provenanceFilter?: string[];
+  /** WEFT-670: require entries to include all of these tags (AND). */
+  tags?: string[];
 }): Promise<{
   success: boolean;
   entries: {
@@ -3290,6 +3292,8 @@ export async function listEntries(options: {
     /** #2073: Present when `includeContent: true` was requested. */
     content?: string;
     provenanceType?: string;
+    /** WEFT-670: tag set stored with the entry (empty array when none). */
+    tags?: string[];
   }[];
   total: number;
   error?: string;
@@ -3319,7 +3323,8 @@ export async function listEntries(options: {
     limit = 20,
     offset = 0,
     dbPath: customPath,
-    provenanceFilter
+    provenanceFilter,
+    tags: requiredTags,
   } = options;
 
   const swarmDir = getMemoryRoot();
@@ -3342,7 +3347,6 @@ export async function listEntries(options: {
     // #2120 — accept `status IS NULL` alongside `'active'`. Old DBs
     // that predate the status column may have NULL after migration.
     // See memory-bridge.ts:bridgeListEntries for full context.
-    // Get total count
     const whereClauses = [ACTIVE_MEMORY_ROW_SQL];
     const whereParams: string[] = [];
     if (namespace) {
@@ -3354,32 +3358,42 @@ export async function listEntries(options: {
       whereParams.push(...provenanceFilter);
     }
     const whereSql = whereClauses.join(' AND ');
-    const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE ${whereSql}`);
-    if (whereParams.length > 0) countStmt.bind(whereParams);
-    const countRows: unknown[][] = [];
-    while (countStmt.step()) {
-      countRows.push(countStmt.get());
-    }
-    countStmt.free();
-    const countResult = countRows.length > 0 ? [{ values: countRows }] : [];
-    const total = countResult[0]?.values?.[0]?.[0] as number || 0;
 
-    // Get entries
+    // WEFT-670: tags are JSON TEXT — filter/paginate in process when tags are set.
+    const tagFilter = Array.isArray(requiredTags) && requiredTags.length > 0
+      ? requiredTags.filter(t => typeof t === 'string' && t.length > 0)
+      : [];
     const safeLimit = parseInt(String(limit), 10) || 100;
     const safeOffset = parseInt(String(offset), 10) || 0;
-    // #2120 — same NULL-as-active acceptance as the count above.
+    const fetchLimit = tagFilter.length > 0 ? 100000 : safeLimit;
+    const fetchOffset = tagFilter.length > 0 ? 0 : safeOffset;
+
+    // Count (pre-tag-filter). With tag filter, total is adjusted after filtering.
+    let total = 0;
+    if (tagFilter.length === 0) {
+      const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM memory_entries WHERE ${whereSql}`);
+      if (whereParams.length > 0) countStmt.bind(whereParams);
+      const countRows: unknown[][] = [];
+      while (countStmt.step()) {
+        countRows.push(countStmt.get());
+      }
+      countStmt.free();
+      total = (countRows[0]?.[0] as number) || 0;
+    }
+
+    // WEFT-670: include tags so export/list can round-trip them.
     const listStmt = db.prepare(
-      `SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, provenance_type
+      `SELECT id, key, namespace, content, embedding, access_count, created_at, updated_at, provenance_type, tags
        FROM memory_entries WHERE ${whereSql}
        ORDER BY updated_at DESC LIMIT ? OFFSET ?`
     );
-    listStmt.bind([...whereParams, safeLimit, safeOffset]);
+    listStmt.bind([...whereParams, fetchLimit, fetchOffset]);
     const listRows: unknown[][] = [];
     while (listStmt.step()) {
       listRows.push(listStmt.get());
     }
     listStmt.free();
-    const result = listRows.length > 0 ? [{ values: listRows }] : [];
+
     const entries: {
       id: string;
       key: string;
@@ -3391,45 +3405,63 @@ export async function listEntries(options: {
       hasEmbedding: boolean;
       content?: string;
       provenanceType?: string;
+      tags?: string[];
     }[] = [];
 
-    if (result[0]?.values) {
-      for (const row of result[0].values) {
-        const [id, key, ns, content, embedding, accessCount, createdAt, updatedAt, provenanceTypeVal] = row as [
-          string, string, string, string, string | null, number, string, string, string | null
-        ];
-        const entry: {
-          id: string;
-          key: string;
-          namespace: string;
-          size: number;
-          accessCount: number;
-          createdAt: string;
-          updatedAt: string;
-          hasEmbedding: boolean;
-          content?: string;
-          provenanceType?: string;
-        } = {
-          // #2073: don't truncate id when content is requested — callers
-          // (notably memory_export) need the full id to round-trip via import.
-          id: options.includeContent ? String(id) : String(id).substring(0, 20),
-          key: key || String(id).substring(0, 15),
-          namespace: ns || 'default',
-          size: (content || '').length,
-          accessCount: accessCount || 0,
-          createdAt: createdAt || new Date().toISOString(),
-          updatedAt: updatedAt || new Date().toISOString(),
-          hasEmbedding: !!embedding && embedding.length > 10,
-          provenanceType: provenanceTypeVal || 'unknown'
-        };
-        if (options.includeContent) {
-          entry.content = content || '';
-        }
-        entries.push(entry);
+    for (const row of listRows) {
+      const [id, key, ns, content, embedding, accessCount, createdAt, updatedAt, provenanceTypeVal, tagsJson] = row as [
+        string, string, string, string, string | null, number, string, string, string | null, string | null
+      ];
+      let tags: string[] = [];
+      if (tagsJson) {
+        try {
+          const parsed = JSON.parse(tagsJson);
+          if (Array.isArray(parsed)) {
+            tags = parsed.filter((t): t is string => typeof t === 'string');
+          }
+        } catch { /* invalid tags JSON */ }
       }
+      if (tagFilter.length > 0 && !tagFilter.every(t => tags.includes(t))) {
+        continue;
+      }
+      const entry: {
+        id: string;
+        key: string;
+        namespace: string;
+        size: number;
+        accessCount: number;
+        createdAt: string;
+        updatedAt: string;
+        hasEmbedding: boolean;
+        content?: string;
+        provenanceType?: string;
+        tags?: string[];
+      } = {
+        // #2073: don't truncate id when content is requested — callers
+        // (notably memory_export) need the full id to round-trip via import.
+        id: options.includeContent ? String(id) : String(id).substring(0, 20),
+        key: key || String(id).substring(0, 15),
+        namespace: ns || 'default',
+        size: (content || '').length,
+        accessCount: accessCount || 0,
+        createdAt: createdAt || new Date().toISOString(),
+        updatedAt: updatedAt || new Date().toISOString(),
+        hasEmbedding: !!embedding && embedding.length > 10,
+        provenanceType: provenanceTypeVal || 'unknown',
+        tags,
+      };
+      if (options.includeContent) {
+        entry.content = content || '';
+      }
+      entries.push(entry);
     }
 
     db.close();
+
+    if (tagFilter.length > 0) {
+      total = entries.length;
+      return { success: true, entries: entries.slice(safeOffset, safeOffset + safeLimit), total };
+    }
 
     return { success: true, entries, total };
   } catch (error) {
