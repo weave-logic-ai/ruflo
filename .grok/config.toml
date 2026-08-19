@@ -3,27 +3,37 @@
 #
 # Goal: full harness (MCP + hooks + skills + agent teams path), not a thin CLI wrapper.
 # See: .grok/rules/ruflo-grok.md and v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md
+#
+# After editing: restart Grok (or reload MCPs) so tool lists refresh.
+# Prefer absolute paths for node MCP entrypoints — do not rely on ~ alone.
 
 # ---------------------------------------------------------------------------
-# Ruflo MCP — orchestrator / ledger (memory, swarm, hooks, team bus, neural)
-# Cold npx can exceed the default 30s startup; keep this high.
+# Ruflo MCP — LOCAL monorepo CLI (team_* + latest feat/grok-host + upstream).
+# Rebuild: cd v3 && pnpm --filter @claude-flow/cli... build
+# Relink shell CLI: npm link (from ruflo/) or scripts/use-local-ruflo.sh
+# After a published release with team_*, you may switch back to:
+#   command = "npx"
+#   args = ["-y", "ruflo@latest", "mcp", "start"]
 # ---------------------------------------------------------------------------
 [mcp_servers.ruflo]
-command = "npx"
-args = ["-y", "ruflo@latest", "mcp", "start"]
+command = "node"
+args = ["/Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js", "mcp", "start"]
 enabled = true
 startup_timeout_sec = 120
 tool_timeout_sec = 180
 
-# RuvNet Brain grounding — search_ruvnet over embedded rUv source.
-# Install: npx ruvnet-brain@latest  (kb lives under ~/.cache/ruvnet-brain/kb)
-# Grok expands ~ in args; if not, use absolute path to forge-mcp-all.mjs.
+# ---------------------------------------------------------------------------
+# Optional: RuvNet Brain grounding (search_ruvnet over embedded rUv source)
+# Install: npx ruvnet-brain@latest  → kb under ~/.cache/ruvnet-brain/kb
+# KB_DIR is required — forge-mcp defaults to process.cwd() and fails in Grok.
+# ---------------------------------------------------------------------------
 [mcp_servers.ruvnet-brain]
 command = "node"
 args = ["/Users/mathewbeane/.cache/ruvnet-brain/kb/forge-mcp-all.mjs"]
+env = { KB_DIR = "/Users/mathewbeane/.cache/ruvnet-brain/kb" }
 enabled = true
 startup_timeout_sec = 90
-tool_timeout_sec = 120
+tool_timeout_sec = 600
 
 # ---------------------------------------------------------------------------
 # Permissions — allow Ruflo CLI + helpers without re-prompting every turn
@@ -37,6 +47,7 @@ allow = [
   "Bash(node .claude/*)",
   "Bash(npx -y ruflo*)",
   "Bash(node scripts/grok-team-bus.mjs*)",
+  "Bash(ruflo*)",
   "MCPTool(ruflo__*)",
   "MCPTool(ruvnet-brain__*)",
 ]
