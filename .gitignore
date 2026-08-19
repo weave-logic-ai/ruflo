@@ -154,6 +154,13 @@ claude-flow.config.json
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
+# Native ruvector/AgentDB CWD leak: default storagePath when unset is
+# `agentdb.rvf` in the process cwd. Empty header-only stubs, not source.
+# Do NOT add a blanket *.rvf — proven-config.signed.rvf and data/clone-data.rvf
+# are intentional tracked artifacts.
+/agentdb.rvf
+v3/@claude-flow/cli/agentdb.rvf
+*.rvf.lock
 claude-flow
 # Removed Windows wrapper files per user request
 hive-mind-prompt-*.txt

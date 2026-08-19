@@ -1,8 +1,8 @@
 # ADR-125 Phase 7 — package-local gitignore.
 #
-# `*.db` / `*.rvf` / `*.redb` are already ignored at the repo root, but
-# we re-state them here so the package is self-contained and contributors
-# editing inside the package directory get the same behaviour.
+# `*.db` is ignored at the repo root. `*.rvf` is NOT (proven-config.signed.rvf
+# and data/clone-data.rvf are tracked). Re-state local patterns so contributors
+# editing inside this package do not commit test-pollution stores.
 
 # Test pollution from agentdb / @ruvector/rvf — these files are written
 # to the package root at runtime and must not be committed.
