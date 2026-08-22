@@ -1713,19 +1713,21 @@ const transferFromProjectCommand: Command = {
 
       // Call MCP tool for transfer
       const result = await callMCPTool<{
+        success: boolean;
+        message?: string;
         sourcePath: string;
         transferred: {
           total: number;
           byType: Record<string, number>;
-        };
-        skipped: {
+        } | number;
+        skipped?: {
           lowConfidence: number;
           duplicates: number;
           conflicts: number;
         };
-        stats: {
-          avgConfidence: number;
-          avgAge: string;
+        stats?: {
+          avgConfidence: number | null;
+          avgAgeDays: number | null;
         };
       }>('hooks_transfer', {
         sourcePath,
@@ -1733,6 +1735,17 @@ const transferFromProjectCommand: Command = {
         minConfidence,
         mergeStrategy: 'keep-highest-confidence',
       });
+
+      // #2859 — the handler reports success:false (no destination write
+      // happened) when the source has no matching patterns at all. Surface
+      // that honestly instead of claiming a transfer occurred.
+      if (!result.success || typeof result.transferred === 'number') {
+        spinner.fail(result.message ?? 'No patterns transferred');
+        if (ctx.flags.format === 'json') {
+          output.printJson(result);
+        }
+        return { success: false, exitCode: 1, data: result };
+      }
 
       spinner.succeed(`Transferred ${result.transferred.total} patterns`);
 
@@ -1750,9 +1763,9 @@ const transferFromProjectCommand: Command = {
         ],
         data: [
           { category: 'Total Transferred', count: output.success(String(result.transferred.total)) },
-          { category: 'Skipped (Low Confidence)', count: result.skipped.lowConfidence },
-          { category: 'Skipped (Duplicates)', count: result.skipped.duplicates },
-          { category: 'Skipped (Conflicts)', count: result.skipped.conflicts }
+          { category: 'Skipped (Low Confidence)', count: result.skipped?.lowConfidence ?? 0 },
+          { category: 'Skipped (Duplicates)', count: result.skipped?.duplicates ?? 0 },
+          { category: 'Skipped (Conflicts)', count: result.skipped?.conflicts ?? 0 }
         ]
       });
 
@@ -1768,11 +1781,19 @@ const transferFromProjectCommand: Command = {
         });
       }
 
-      output.writeln();
-      output.printList([
-        `Avg Confidence: ${(result.stats.avgConfidence * 100).toFixed(1)}%`,
-        `Avg Age: ${result.stats.avgAge}`
-      ]);
+      // #2865-style honesty: omit stats that have no real measured value
+      // rather than showing a fabricated number.
+      const statLines: string[] = [];
+      if (result.stats?.avgConfidence != null) {
+        statLines.push(`Avg Confidence: ${(result.stats.avgConfidence * 100).toFixed(1)}%`);
+      }
+      if (result.stats?.avgAgeDays != null) {
+        statLines.push(`Avg Age: ${result.stats.avgAgeDays.toFixed(1)} days`);
+      }
+      if (statLines.length > 0) {
+        output.writeln();
+        output.printList(statLines);
+      }
 
       return { success: true, data: result };
     } catch (error) {
@@ -2585,9 +2606,17 @@ const intelligenceCommand: Command = {
           moe: {
             enabled: enableMoe,
             status: String(mcpMoe?.status ?? (hasLocalData ? 'active' : 'idle')),
-            expertsActive: Number(mcpMoe?.expertsActive ?? (hasLocalData ? 8 : 0)),
-            routingAccuracy: Number(mcpMoe?.routingAccuracy ?? (hasLocalData ? 0.82 : 0)),
-            loadBalance: Number(mcpMoe?.loadBalance ?? (hasLocalData ? 0.9 : 0)),
+            // #2865 — these three previously fell back to hardcoded
+            // hasLocalData ? <constant> : 0 whenever the MCP tool didn't
+            // report a real value, so "Routing Accuracy: 82.0%" displayed
+            // on every project with local neural data regardless of actual
+            // routing quality (measured 49% on a real store). None of these
+            // three has a cheap, honest local substitute the way
+            // `hooks metrics`' routingAccuracy falls back to averageConfidence,
+            // so they are null (unmeasured) rather than a fabricated number.
+            expertsActive: mcpMoe?.expertsActive == null ? null : Number(mcpMoe.expertsActive),
+            routingAccuracy: mcpMoe?.routingAccuracy == null ? null : Number(mcpMoe.routingAccuracy),
+            loadBalance: mcpMoe?.loadBalance == null ? null : Number(mcpMoe.loadBalance),
           },
           hnsw: {
             enabled: enableHnsw,
@@ -2616,7 +2645,12 @@ const intelligenceCommand: Command = {
           tokenReduction: 'N/A',
           sweBenchScore: 'N/A',
         },
-        lastTrainingMs: lastAdaptation ? Date.now() - lastAdaptation : undefined,
+        // #2940: a training cycle that actually ran this invocation is "now"
+        // — reading the pre-call `lastAdaptation` here would still show the
+        // stale age (the exact "aged instead of reset" symptom reported).
+        lastTrainingMs: (mcpResult as { training?: { trained?: boolean } } | null)?.training?.trained
+          ? 0
+          : (lastAdaptation ? Date.now() - lastAdaptation : undefined),
         persistence: {
           dataDir: persistence.dataDir,
           patternsFile: persistence.patternsFile,
@@ -2629,10 +2663,33 @@ const intelligenceCommand: Command = {
         },
       };
 
+      // #2940: this block used to be a cosmetic 500ms sleep followed by an
+      // unconditional "Training cycle completed" — no training ever ran and
+      // `lastAdaptation` never moved, so `--status` could never report a
+      // training cycle as recent no matter how many times `--train` was
+      // invoked. `hooks_intelligence` now actually distills when asked
+      // (see mcp-tools/hooks-tools.ts); report what it actually did instead
+      // of a canned success message.
+      const trainingResult = (mcpResult as { training?: { attempted: boolean; trained: boolean; patternsDistilled?: number; reason?: string } } | null)?.training;
       if (forceTraining) {
-        spinner.setText('Running training cycle...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        spinner.succeed('Training cycle completed');
+        if (trainingResult?.trained && trainingResult.patternsDistilled) {
+          spinner.succeed(
+            `Training cycle completed — distilled ${trainingResult.patternsDistilled} pattern${trainingResult.patternsDistilled === 1 ? '' : 's'}`
+          );
+        } else if (trainingResult?.trained) {
+          // Ran (SONA/EWC++ distillation pass executed, lastAdaptation
+          // moved) but found zero new patterns — deliberately NOT the same
+          // message as a real distillation, or this is exactly the "success
+          // report with no state change behind it" the issue describes.
+          spinner.stop();
+          output.printWarning(`Training cycle ran — 0 new patterns to distill (${trainingResult.reason || 'nothing new since the last cycle'})`);
+        } else if (trainingResult?.attempted) {
+          spinner.stop();
+          output.printWarning(`Training cycle ran with nothing to do — ${trainingResult.reason || 'no new trajectories to distill'}`);
+        } else {
+          spinner.stop();
+          output.printWarning('Training cycle could not run — intelligence MCP tool unavailable');
+        }
       } else {
         spinner.succeed(hasLocalData ? 'Intelligence system active (local data loaded)' : 'Intelligence system active');
       }
@@ -2689,9 +2746,11 @@ const intelligenceCommand: Command = {
           ],
           data: [
             { metric: 'Status', value: formatIntelligenceStatus(moe.status) },
-            { metric: 'Active Experts', value: moe.expertsActive ?? 0 },
-            { metric: 'Routing Accuracy', value: `${((moe.routingAccuracy ?? 0) * 100).toFixed(1)}%` },
-            { metric: 'Load Balance', value: `${((moe.loadBalance ?? 0) * 100).toFixed(1)}%` }
+            // #2865 — omit rather than show a fabricated 0/0.0% when the
+            // MCP tool hasn't reported a real value for these.
+            ...(moe.expertsActive == null ? [] : [{ metric: 'Active Experts', value: moe.expertsActive }]),
+            ...(moe.routingAccuracy == null ? [] : [{ metric: 'Routing Accuracy', value: `${(moe.routingAccuracy * 100).toFixed(1)}%` }]),
+            ...(moe.loadBalance == null ? [] : [{ metric: 'Load Balance', value: `${(moe.loadBalance * 100).toFixed(1)}%` }]),
           ]
         });
       } else {
@@ -5212,7 +5271,8 @@ const teammateIdleCommand: Command = {
       short: 'a',
       description: 'Automatically assign pending tasks to idle teammate',
       type: 'boolean',
-      default: true
+      // #3031: explicit opt-in only. Idle/liveness is not assignment authority.
+      default: false
     },
     {
       name: 'check-task-list',
@@ -5238,7 +5298,7 @@ const teammateIdleCommand: Command = {
     { command: 'claude-flow hooks teammate-idle -t worker-1 --check-task-list', description: 'Check tasks for specific teammate' }
   ],
   action: async (ctx: CommandContext): Promise<CommandResult> => {
-    const autoAssign = ctx.flags.autoAssign !== false;
+    const autoAssign = ctx.flags.autoAssign === true;
     const checkTaskList = ctx.flags.checkTaskList !== false;
     const teammateId = ctx.flags.teammateId as string;
     const teamName = ctx.flags.teamName as string;

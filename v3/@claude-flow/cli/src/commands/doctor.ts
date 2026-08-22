@@ -387,6 +387,40 @@ function isMemoryDbEncryptedAtRest(dbPath: string): boolean {
   }
 }
 
+/**
+ * Distinguish an unavailable native addon from a database that the native
+ * driver opened and found malformed. Importing better-sqlite3 can succeed even
+ * when its postinstall script was skipped: the JavaScript wrapper loads, then
+ * the first Database construction throws because better_sqlite3.node is absent
+ * or incompatible with the active Node ABI.
+ */
+function isNativeSqliteBindingUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return [
+    /Could not locate the bindings file/i,
+    /better_sqlite3\.node/i,
+    /NODE_MODULE_VERSION/i,
+    /compiled against a different Node\.js version/i,
+    /ERR_DLOPEN_FAILED/i,
+    /invalid ELF header/i,
+    /wrong ELF class/i,
+    /not a valid Win32 application/i,
+    /Module did not self-register/i,
+    /no suitable image found/i,
+  ].some((pattern) => pattern.test(message));
+}
+
+function nativeBindingUnavailableCheck(name: string, dbPath: string, error: unknown, suffix: string): HealthCheck {
+  const details = error instanceof Error ? error.message : String(error);
+  const summary = details.split(/\r?\n/, 1)[0].replace(/\s+Tried:\s*$/i, '');
+  return {
+    name,
+    status: 'warn',
+    message: `${dbPath} — better-sqlite3 package found, but its native binding is unavailable: ${summary} ${suffix}`,
+    fix: 'reinstall with npm install scripts enabled or run `npm rebuild better-sqlite3`; then rerun this check',
+  };
+}
+
 // #2737 part 1 — bare `doctor` (no --component flag) never actually opened
 // memory.db: checkMemoryDatabase above is existsSync()+statSync() only, so
 // it PASSES on any file that exists and can be stat'd, corrupt or not, and
@@ -443,8 +477,8 @@ async function checkMemoryStructuralIntegrity(): Promise<HealthCheck> {
     return {
       name: NAME,
       status: 'warn',
-      message: `${dbPath} — better-sqlite3 not installed; structural-only check skipped (optional native module)`,
-      fix: 'npm install better-sqlite3  (enables WAL-aware structural checks on every `doctor` run)',
+      message: `${dbPath} — better-sqlite3 not installed; native WAL-backed persistence and the structural-only check are unavailable`,
+      fix: 'install better-sqlite3 with npm install scripts enabled, then rerun this check',
     };
   }
 
@@ -452,6 +486,14 @@ async function checkMemoryStructuralIntegrity(): Promise<HealthCheck> {
   try {
     db = new Database(dbPath, { readonly: true, fileMustExist: true });
   } catch (e) {
+    if (isNativeSqliteBindingUnavailable(e)) {
+      return nativeBindingUnavailableCheck(
+        NAME,
+        dbPath,
+        e,
+        '[structural-only; durable WAL-backed persistence unavailable]',
+      );
+    }
     const msg = (e as Error).message || String(e);
     // Encryption already ruled out above — an unencrypted file
     // better-sqlite3 can't even open is definitive corruption.
@@ -523,9 +565,9 @@ async function checkMemoryIntegrity(): Promise<HealthCheck> {
 
   // Prefer native better-sqlite3 (WAL-aware, full integrity_check). Module
   // load is isolated in its own try/catch so ONLY "not installed" falls
-  // through to the sql.js fallback below — once the module loaded, any
-  // open/query failure is resolved (fail) right here, not silently
-  // reclassified as "sql.js fallback, main-image-only" by an outer catch.
+  // through to the sql.js fallback below. A loaded JavaScript wrapper can
+  // still lack its native binding (#2968); that capability failure is a warn,
+  // while genuine open/query failures remain authoritative failures here.
   let Database: any;
   try {
     Database = ((await import('better-sqlite3')) as any).default;
@@ -538,6 +580,14 @@ async function checkMemoryIntegrity(): Promise<HealthCheck> {
     try {
       db = new Database(dbPath, { readonly: true, fileMustExist: true });
     } catch (e) {
+      if (isNativeSqliteBindingUnavailable(e)) {
+        return nativeBindingUnavailableCheck(
+          'Memory Integrity',
+          dbPath,
+          e,
+          '[native WAL-backed persistence unavailable]',
+        );
+      }
       const msg = (e as Error).message || String(e);
       return {
         name: 'Memory Integrity',
@@ -594,7 +644,12 @@ async function checkMemoryIntegrity(): Promise<HealthCheck> {
     const res = db.exec('PRAGMA integrity_check');
     const rows: string[] = res[0]?.values?.map((v: any[]) => String(v[0])) ?? [];
     if (rows.length === 1 && rows[0] === 'ok') {
-      return { name: 'Memory Integrity', status: 'pass', message: `${dbPath} — PRAGMA integrity_check: ok [main-image-only fallback — sql.js can't see WAL-only data; install better-sqlite3 for full coverage]` };
+      return {
+        name: 'Memory Integrity',
+        status: 'warn',
+        message: `${dbPath} — PRAGMA integrity_check: ok, but only for the main image [sql.js fallback; native WAL-backed persistence unavailable]`,
+        fix: 'install better-sqlite3 with npm install scripts enabled, then rerun this check',
+      };
     }
     return {
       name: 'Memory Integrity',
@@ -873,8 +928,10 @@ async function checkApiKeys(): Promise<HealthCheck> {
     }
   }
 
-  // Detect Claude Code environment — API keys are managed internally
-  const inClaudeCode = !!(process.env.CLAUDE_CODE || process.env.CLAUDE_PROJECT_DIR || process.env.MCP_SESSION_ID);
+  // Detect Claude Code environment — API keys are managed internally.
+  // Claude Code sets CLAUDECODE (no underscore); CLAUDE_CODE is kept for
+  // compatibility with anything else that might set it.
+  const inClaudeCode = !!(process.env.CLAUDECODE || process.env.CLAUDE_CODE || process.env.CLAUDE_PROJECT_DIR || process.env.MCP_SESSION_ID);
 
   if (found.includes('ANTHROPIC_API_KEY') || found.includes('CLAUDE_API_KEY')) {
     return { name: 'API Keys', status: 'pass', message: `Found: ${found.join(', ')}` };
@@ -1809,6 +1866,71 @@ async function checkMetaharnessIntegration(): Promise<HealthCheck> {
   }
 }
 
+/**
+ * Dependency-contract check: every `@metaharness/*` package this CLI DECLARES
+ * in its own optionalDependencies must actually resolve at runtime. Declared
+ * packages are advertised integration surfaces (`ruflo metaharness evolve`,
+ * flywheel receipt interop, radio coordination) — a declared-but-absent
+ * package means the install dropped an optional dep (or the declaration
+ * regressed to peer-only), so the advertised integration silently degrades.
+ * That is a FAIL, not a warn: warn is reserved for surfaces that were never
+ * advertised as installed (the `npx metaharness` umbrella path above).
+ */
+async function checkMetaharnessDeclaredPackages(): Promise<HealthCheck> {
+  const NAME = 'MetaHarness declared packages (ADR-150)';
+  try {
+    // Walk up from this module to the CLI package root (works for npx cache,
+    // global install, project-local install, and monorepo dev alike).
+    let root: string | null = null;
+    let q = dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 8; i++) {
+      const pj = join(q, 'package.json');
+      if (existsSync(pj)) {
+        try {
+          if ((JSON.parse(readFileSync(pj, 'utf-8')) as { name?: string }).name === '@claude-flow/cli') { root = q; break; }
+        } catch { /* keep walking */ }
+      }
+      q = dirname(q);
+    }
+    if (!root) return { name: NAME, status: 'warn', message: 'could not locate the @claude-flow/cli package root' };
+
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')) as { optionalDependencies?: Record<string, string> };
+    const declared = Object.keys(pkg.optionalDependencies ?? {}).filter((n) => n === 'metaharness' || n.startsWith('@metaharness/'));
+    if (declared.length === 0) {
+      return {
+        name: NAME,
+        status: 'fail',
+        message: 'no @metaharness/* packages declared in optionalDependencies — the dependency contract regressed (peer-only declarations are never installed)',
+        fix: 'Restore @metaharness/darwin, @metaharness/flywheel, @metaharness/radio, @metaharness/turn-credit to optionalDependencies in @claude-flow/cli',
+      };
+    }
+
+    // Node resolution: nearest node_modules wins, walking upward from the CLI root.
+    const resolves = (name: string): boolean => {
+      let d = root as string;
+      for (let i = 0; i < 10; i++) {
+        if (existsSync(join(d, 'node_modules', name, 'package.json'))) return true;
+        const parent = dirname(d);
+        if (parent === d) break;
+        d = parent;
+      }
+      return false;
+    };
+    const missing = declared.filter((n) => !resolves(n));
+    if (missing.length > 0) {
+      return {
+        name: NAME,
+        status: 'fail',
+        message: `declared but not installed: ${missing.join(', ')} — advertised MetaHarness surfaces are degraded`,
+        fix: 'npm install --include=optional  # optional deps were skipped or pruned',
+      };
+    }
+    return { name: NAME, status: 'pass', message: `${declared.length} declared package(s) resolve: ${declared.join(', ')}` };
+  } catch (err) {
+    return { name: NAME, status: 'warn', message: `check failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
 async function checkMetaharness(): Promise<HealthCheck> {
   try {
     const version = await runCommand('npx -y metaharness@latest --version 2>&1', 15000);
@@ -2163,6 +2285,7 @@ export const doctorCommand: Command = {
       checkEncryptionAtRest, // ADR-096 Phase 5
       checkFederationBreaker, // ADR-097 Phase 4
       checkMetaharness, // ADR-150 — MetaHarness upstream package
+      checkMetaharnessDeclaredPackages, // dependency contract — declared optional deps must resolve
       checkMetaharnessIntegration, // iter 45 — ruflo-side integration layer
       checkFunnel, // ADR-305 — effective funnel state + deciding precedence source
       checkProxySponsoredConsent, // ADR-313 — Meta LLM Proxy sponsored-downtime health
@@ -2206,7 +2329,7 @@ export const doctorCommand: Command = {
       'agentic-flow': checkAgenticFlow,
       'encryption': checkEncryptionAtRest, // ADR-096 Phase 5
       'federation': checkFederationBreaker, // ADR-097 Phase 4
-      'metaharness': checkMetaharness, // ADR-150 — upstream package
+      'metaharness': [checkMetaharness, checkMetaharnessDeclaredPackages, checkMetaharnessIntegration], // ADR-150 — upstream + declared deps + ruflo-side
       'metaharness-integration': checkMetaharnessIntegration, // iter 45 — ruflo-side
       'funnel': checkFunnel, // ADR-305
       // ADR-307 — deep-dive array, same pattern as 'memory' above: the cheap

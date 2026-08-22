@@ -69,6 +69,25 @@ export type CLIControllerName =
   | 'guardedVectorBackend';
 
 /**
+ * Minimal surface the `hybridSearch` controller needs from a backend when
+ * falling back to `this.backend` (no `memoryService` supplied) — the same
+ * two methods `AgentDBAdapter` exposes and the only two this factory calls.
+ * A named guard instead of ad-hoc `typeof` checks so a future backend that
+ * happens to define same-named-but-differently-shaped methods is easier to
+ * catch and reason about at one call site (Dream Cycle 2026-08-18).
+ */
+interface HybridCapableBackend {
+  semanticSearch(query: string, k?: number, threshold?: number): Promise<unknown[]>;
+  searchKeyword(query: string, options?: { k?: number }): Promise<unknown[]>;
+}
+
+function isHybridCapableBackend(backend: unknown): backend is HybridCapableBackend {
+  if (!backend || typeof backend !== 'object') return false;
+  const b = backend as Record<string, unknown>;
+  return typeof b.semanticSearch === 'function' && typeof b.searchKeyword === 'function';
+}
+
+/**
  * All controller names
  */
 export type ControllerName = AgentDBControllerName | CLIControllerName;
@@ -231,6 +250,7 @@ export class ControllerRegistry extends EventEmitter {
   private config: RuntimeConfig = {};
   private initialized = false;
   private initTimeMs = 0;
+  private hierarchicalFallback: { reason: string; persistence: string } | null = null;
 
   /**
    * Initialize all controllers in level-based order.
@@ -756,9 +776,27 @@ export class ControllerRegistry extends EventEmitter {
         // independently in parallel, fuses via RRF, diversifies via MMR.
         // Results carry a `signals` field naming which arms surfaced each
         // entry (provenance for debugging + downstream rerankers).
+        //
+        // Dream Cycle 2026-08-18: the auto-enable gate (`isControllerEnabled`)
+        // already honors an explicit `controllers: { hybridSearch: true }`
+        // override, but until now this factory unconditionally required
+        // `config.memoryService` regardless of that override — so explicitly
+        // opting in without also hand-building a `UnifiedMemoryService`
+        // silently produced a disabled controller (no error, no signal why).
+        // When no `memoryService` was supplied, fall back to `this.backend`
+        // if it duck-types as AgentDBAdapter-compatible (has `semanticSearch`
+        // + `searchKeyword`) — the same two methods this factory already
+        // calls below. Only reachable when a caller explicitly requests
+        // `hybridSearch`; the default (memoryService-only) auto-enable
+        // condition and its behavior are unchanged.
         const memSvc = this.config.memoryService;
-        if (!memSvc) return null;
-        const adapter = typeof memSvc.getAdapter === 'function' ? memSvc.getAdapter() : null;
+        const directBackend =
+          !memSvc && isHybridCapableBackend(this.backend) ? this.backend : null;
+        const adapter = memSvc
+          ? typeof memSvc.getAdapter === 'function'
+            ? memSvc.getAdapter()
+            : null
+          : directBackend;
         if (!adapter) return null;
 
         const { applyRRF, applyMMR } = await import('./smart-retrieval.js');
@@ -881,19 +919,25 @@ export class ControllerRegistry extends EventEmitter {
         return null;
 
       case 'hierarchicalMemory': {
-        // HierarchicalMemory exported from agentdb 3.0.0-alpha.10 (ADR-066 Phase P2-3)
-        // Constructor: (db, embedder, vectorBackend?, graphBackend?, config?)
-        if (!this.agentdb) return this.createTieredMemoryStub();
+        // HierarchicalMemory was exported by agentdb 3.0.0-alpha.10 (ADR-066
+        // Phase P2-3) and REMOVED again at alpha.17 — so the fallback below is
+        // the live path, not an edge case. Every fallback records why, because
+        // taking it silently is what made stores look successful while landing
+        // nowhere (#2887).
+        if (!this.agentdb) return this.tieredMemoryFallback('agentdb-unavailable');
         try {
           const agentdbModule: any = await import('agentdb');
           const HM = agentdbModule.HierarchicalMemory;
-          if (!HM) return this.createTieredMemoryStub();
+          if (typeof HM !== 'function') {
+            return this.tieredMemoryFallback('agentdb-export-missing');
+          }
           const embedder = this.createEmbeddingService();
           const hm = new HM(this.agentdb.database, embedder);
           await hm.initializeDatabase();
           return hm;
-        } catch {
-          return this.createTieredMemoryStub();
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          return this.tieredMemoryFallback(`agentdb-init-failed: ${msg.substring(0, 120)}`);
         }
       }
 
@@ -1191,16 +1235,44 @@ export class ControllerRegistry extends EventEmitter {
   }
 
   /**
-   * Lightweight in-memory tiered store (fallback when HierarchicalMemory
-   * cannot be initialized from agentdb).
+   * Tiered store used when agentdb's HierarchicalMemory is unavailable.
    *
-   * Promoted to the first-class {@link TieredMemoryStore} module, which
-   * adds Zep/Graphiti-style temporal validity (validFrom / validUntil /
-   * supersededBy) while keeping the legacy duck-typed API:
-   * store(key, value, tier) / recall(query, topK) / getTierStats().
+   * Since agentdb 3.0.0-alpha.17 dropped the `HierarchicalMemory` export
+   * entirely, this is the ONLY backing store for `agentdb_hierarchical-*`
+   * in practice — so it is handed AgentDB's SQLite connection and writes
+   * through to it. Without a connection it stays volatile and reports
+   * `isDurable() === false` so callers can refuse to claim success (#2887).
+   *
+   * Keeps the legacy duck-typed API — store(key, value, tier) /
+   * recall(query, topK) / getTierStats() — plus Zep/Graphiti-style temporal
+   * validity (validFrom / validUntil / supersededBy).
    */
   private createTieredMemoryStub(): TieredMemoryStore {
-    return new TieredMemoryStore();
+    const db = this.agentdb?.database ?? null;
+    const usable = db && typeof db.prepare === 'function' && typeof db.exec === 'function'
+      ? db
+      : null;
+    return new TieredMemoryStore({ db: usable });
+  }
+
+  /** Build the tiered fallback and record/emit why the native one was skipped. */
+  private tieredMemoryFallback(reason: string): TieredMemoryStore {
+    const store = this.createTieredMemoryStub();
+    this.hierarchicalFallback = { reason, persistence: store.getPersistence() };
+    this.emit('controller:degraded', {
+      name: 'hierarchicalMemory',
+      reason,
+      persistence: store.getPersistence(),
+    });
+    return store;
+  }
+
+  /**
+   * Why `hierarchicalMemory` is served by the tiered fallback, and whether
+   * that fallback is durable. Null when the native controller is in use.
+   */
+  getHierarchicalFallback(): { reason: string; persistence: string } | null {
+    return this.hierarchicalFallback;
   }
 
   /**

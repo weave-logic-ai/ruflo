@@ -494,7 +494,7 @@ const MEMORY_DIR = '.claude-flow/memory';
 const MEMORY_FILE = 'store.json';
 
 function getMemoryPath(): string {
-  return resolve(join(MEMORY_DIR, MEMORY_FILE));
+  return resolve(join(getProjectCwd(), MEMORY_DIR, MEMORY_FILE));
 }
 
 function loadMemoryStore(): MemoryStore {
@@ -508,6 +508,105 @@ function loadMemoryStore(): MemoryStore {
     // Return empty store on error
   }
   return { entries: {}, version: '3.0.0' };
+}
+
+interface ActiveSessionState {
+  id: string;
+  startedAt: string;
+  metrics?: {
+    edits?: number;
+    commands?: number;
+    tasks?: number;
+    errors?: number;
+  };
+}
+
+interface SessionActivity {
+  tasksCompleted: number;
+  patternsLearned: number;
+  editsRecorded: number;
+  commandsRecorded: number;
+  errorsRecorded: number;
+}
+
+function isLearnedPatternEntry(entry: MemoryEntry): boolean {
+  return entry.key.includes('pattern') ||
+    entry.metadata?.type === 'pattern' ||
+    entry.key.startsWith('learned-') ||
+    entry.namespace === 'patterns' ||
+    entry.metadata?.type === 'routing-decision';
+}
+
+function timestampInRange(value: unknown, start: number, end: number): boolean {
+  if (typeof value !== 'string' && typeof value !== 'number') return false;
+  const timestamp = typeof value === 'number' ? value : Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp >= start && timestamp <= end;
+}
+
+function nonNegativeInteger(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : 0;
+}
+
+function loadActiveSessionState(): ActiveSessionState | null {
+  try {
+    const sessionPath = join(getProjectCwd(), '.claude-flow', 'sessions', 'current.json');
+    if (!existsSync(sessionPath)) return null;
+    const session = JSON.parse(readFileSync(sessionPath, 'utf-8')) as Partial<ActiveSessionState>;
+    if (typeof session.id !== 'string' || session.id.trim().length === 0) return null;
+    if (typeof session.startedAt !== 'string' || !Number.isFinite(Date.parse(session.startedAt))) return null;
+    return session as ActiveSessionState;
+  } catch {
+    return null;
+  }
+}
+
+function loadSessionActivity(session: ActiveSessionState, endedAt: number): SessionActivity {
+  const startedAt = Date.parse(session.startedAt);
+  let tasksCompleted = 0;
+
+  try {
+    const taskPath = join(getProjectCwd(), '.claude-flow', 'tasks', 'store.json');
+    if (existsSync(taskPath)) {
+      const store = JSON.parse(readFileSync(taskPath, 'utf-8')) as {
+        tasks?: Record<string, { status?: string; completedAt?: string }>;
+      };
+      for (const task of Object.values(store.tasks ?? {})) {
+        if (task.status === 'completed' && timestampInRange(task.completedAt, startedAt, endedAt)) {
+          tasksCompleted++;
+        }
+      }
+    }
+  } catch {
+    // Missing or malformed task state contributes no completed tasks.
+  }
+
+  const patternsLearned = Object.values(loadMemoryStore().entries)
+    .filter(entry => isLearnedPatternEntry(entry) && timestampInRange(entry.storedAt, startedAt, endedAt))
+    .length;
+
+  return {
+    tasksCompleted,
+    patternsLearned,
+    editsRecorded: nonNegativeInteger(session.metrics?.edits),
+    commandsRecorded: nonNegativeInteger(session.metrics?.commands),
+    errorsRecorded: nonNegativeInteger(session.metrics?.errors),
+  };
+}
+
+function buildSessionSummary(activity: SessionActivity, duration: number): string {
+  const durationMinutes = Math.max(0, Math.round(duration / 60000));
+  const count = (value: number, singular: string, plural = `${singular}s`) =>
+    `${value} ${value === 1 ? singular : plural}`;
+  return [
+    `${count(activity.tasksCompleted, 'task')} completed`,
+    `${count(activity.patternsLearned, 'pattern')} learned`,
+    `${count(activity.editsRecorded, 'edit')} recorded`,
+    `${count(activity.commandsRecorded, 'command')} recorded`,
+    `${count(activity.errorsRecorded, 'error')} recorded`,
+    `duration ${count(durationMinutes, 'minute')}`,
+  ].join('; ');
 }
 
 /**
@@ -549,13 +648,7 @@ function getIntelligenceStatsFromMemory(): {
   // patterns the metric is meant to count, so include them: any entry
   // whose namespace is `patterns`, plus the original shapes for
   // forward-compatibility with a future explicit `pattern` writer.
-  const patternEntries = entries.filter(e =>
-    e.key.includes('pattern') ||
-    e.metadata?.type === 'pattern' ||
-    e.key.startsWith('learned-') ||
-    e.namespace === 'patterns' ||
-    e.metadata?.type === 'routing-decision'
-  );
+  const patternEntries = entries.filter(isLearnedPatternEntry);
 
   // Categorize patterns
   const categories: Record<string, number> = {};
@@ -1130,12 +1223,18 @@ export const hooksRoute: MCPTool = {
     let confidence: number;
     let matchedPattern = '';
 
+    // Both static and learned patterns are gated on the same similarity
+    // score. Learned patterns additionally require support/reliability as a
+    // quality guard, but do NOT need a higher score bar — a learned pattern
+    // that outscores every static candidate must not lose to one anyway
+    // (#2864: a 25pp higher threshold made a top-scoring learned-researcher
+    // match at 0.57 lose to a static match at 0.52, discarding the learned
+    // store's output on the majority of routes).
     const eligibleSemantic = semanticResult.find((match) => {
       if (match.score <= 0.4) return false;
       const learned = match.intent.startsWith('learned-') || match.metadata.source === 'learned';
       if (!learned) return true;
-      return match.score >= 0.65
-        && Number(match.metadata.support ?? 0) >= 2
+      return Number(match.metadata.support ?? 0) >= 2
         && Number(match.metadata.reliability ?? 0) >= 0.75;
     });
     if (eligibleSemantic) {
@@ -1509,32 +1608,47 @@ export const hooksPostTask: MCPTool = {
       // Intelligence module not available — non-fatal
     }
 
-    // ADR-130 Phase 3: fire-and-forget "reinforced-by" edge on task success
+    // ADR-130 Phase 3: "reinforced-by" edge on task success.
     // Writes: context node → task pattern node (relation: "reinforced-by")
+    //
+    // #2961 — this used to be fire-and-forget (no `await` on the IIFE). That
+    // was invisible from the long-running MCP server, where the process
+    // stays alive long enough for the detached write to finish in the
+    // background. But `hooks post-task` (CLI) is the exact same handler
+    // invoked from a one-shot process that calls `process.exit(0)`
+    // immediately after this action resolves (bin/cli.js, #1552) — the
+    // still-pending dynamic `import(...)` + `insertGraphEdge()` call was
+    // killed before its first tick, so the CLI form dropped this edge on
+    // every single success, not intermittently. Await it — this is a
+    // single fast DB write, not worth losing correctness on one call site
+    // to save latency on the other.
     if (success) {
-      (async () => {
-        try {
-          const { insertGraphEdge } = await import('../memory/graph-edge-writer.js');
-          const sessionCtxId = `task:${taskId}`;
-          const patternId = `pattern:${taskId}`;
-          await insertGraphEdge({
-            sourceId: sessionCtxId,
-            targetId: patternId,
-            relation: 'reinforced-by',
-            weight: quality,
-            confidence: quality,
-            lastReinforced: new Date().toISOString(),
-            metadata: { success, agent, taskId },
-          });
-        } catch { /* non-fatal */ }
-      })().catch(() => {});
+      try {
+        const { insertGraphEdge } = await import('../memory/graph-edge-writer.js');
+        const sessionCtxId = `task:${taskId}`;
+        const patternId = `pattern:${taskId}`;
+        await insertGraphEdge({
+          sourceId: sessionCtxId,
+          targetId: patternId,
+          relation: 'reinforced-by',
+          weight: quality,
+          confidence: quality,
+          lastReinforced: new Date().toISOString(),
+          metadata: { success, agent, taskId },
+        });
+      } catch { /* non-fatal */ }
     }
 
     // Persist routing outcome for runtime learning (file-based, always reliable)
     const taskText = (params.task as string) || '';
     const outcomeKeywords = extractKeywords(taskText);
     let outcomePersisted = false;
-    if (taskText && agent && agent.length <= 100 && /^[a-zA-Z0-9_-]+$/.test(agent)) {
+    // #3064 — the previous ad-hoc regex `/^[a-zA-Z0-9_-]+$/` silently dropped
+    // colon-namespaced plugin agents (`ruflo-core:reviewer`, etc.) — i.e. every
+    // Claude Code plugin agent. Colons are already allowed by the canonical
+    // validateIdentifier() check on line 1456 above (IDENTIFIER_RE includes ':'
+    // and '.'), so no additional charset gating is needed here.
+    if (taskText && agent) {
       try {
         const outcomes = loadRoutingOutcomes();
         outcomes.push({
@@ -2008,18 +2122,21 @@ export const hooksTransfer: MCPTool = {
       // Fall back to empty store
     }
 
-    const sourceEntries = Object.values(sourceStore.entries);
-
-    // Count patterns by type from source
-    const byType: Record<string, number> = {
-      'file-patterns': sourceEntries.filter(e => e.key.includes('file') || e.metadata?.type === 'file-pattern').length,
-      'task-routing': sourceEntries.filter(e => e.key.includes('routing') || e.metadata?.type === 'routing').length,
-      'command-risk': sourceEntries.filter(e => e.key.includes('command') || e.metadata?.type === 'command-risk').length,
-      'agent-success': sourceEntries.filter(e => e.key.includes('agent') || e.metadata?.type === 'agent-success').length,
+    const classifyType = (key: string, metadata?: Record<string, unknown>): string | null => {
+      if (key.includes('file') || metadata?.type === 'file-pattern') return 'file-patterns';
+      if (key.includes('routing') || metadata?.type === 'routing') return 'task-routing';
+      if (key.includes('command') || metadata?.type === 'command-risk') return 'command-risk';
+      if (key.includes('agent') || metadata?.type === 'agent-success') return 'agent-success';
+      return null;
     };
 
+    const candidates = Object.entries(sourceStore.entries)
+      .map(([key, entry]) => ({ key, entry, type: classifyType(key, entry.metadata) }))
+      .filter((c): c is { key: string; entry: MemoryEntry; type: string } => c.type !== null)
+      .filter(c => !filter || c.type.includes(filter));
+
     // If source has no patterns, report honestly instead of substituting demo data
-    if (Object.values(byType).every(v => v === 0)) {
+    if (candidates.length === 0) {
       return {
         success: false,
         message: 'No patterns found in source project',
@@ -2028,29 +2145,71 @@ export const hooksTransfer: MCPTool = {
       };
     }
 
-    if (filter) {
-      Object.keys(byType).forEach(key => {
-        if (!key.includes(filter)) delete byType[key];
-      });
+    // #2859 — this used to count source patterns, then invent skip counts
+    // as fixed percentages of that count and a fixed avgConfidence/avgAge,
+    // without ever reading or writing the destination store. An operator
+    // could believe state moved between projects when nothing changed.
+    // Perform a real merge: skip entries below the confidence threshold,
+    // skip exact duplicates, skip real conflicts (destination already has
+    // a different value for that key — never silently overwritten), and
+    // actually write whatever remains into this project's own memory store.
+    const destStore = loadMemoryStore();
+    const byType: Record<string, number> = {};
+    let lowConfidence = 0;
+    let duplicates = 0;
+    let conflicts = 0;
+    let transferredCount = 0;
+    let confidenceSum = 0;
+    let confidenceCount = 0;
+    let ageSumMs = 0;
+    let ageCount = 0;
+    const now = Date.now();
+
+    for (const { key, entry, type } of candidates) {
+      const confidenceRaw = entry.metadata?.confidence ?? entry.metadata?.reliability;
+      const confidence = typeof confidenceRaw === 'number' ? confidenceRaw : undefined;
+      if (confidence !== undefined && confidence < minConfidence) {
+        lowConfidence++;
+        continue;
+      }
+
+      const existing = destStore.entries[key];
+      if (existing) {
+        const same = JSON.stringify(existing.value) === JSON.stringify(entry.value);
+        if (same) { duplicates++; continue; }
+        conflicts++;
+        continue;
+      }
+
+      destStore.entries[key] = entry;
+      transferredCount++;
+      byType[type] = (byType[type] ?? 0) + 1;
+      if (confidence !== undefined) { confidenceSum += confidence; confidenceCount++; }
+      const storedAtMs = Date.parse(entry.storedAt ?? '');
+      if (!Number.isNaN(storedAtMs)) { ageSumMs += now - storedAtMs; ageCount++; }
     }
 
-    const total = Object.values(byType).reduce((a, b) => a + b, 0);
+    if (transferredCount > 0) {
+      const memDir = resolve(MEMORY_DIR);
+      if (!existsSync(memDir)) mkdirSync(memDir, { recursive: true });
+      writeFileSync(getMemoryPath(), JSON.stringify(destStore, null, 2), 'utf-8');
+    }
 
     return {
       success: true,
       sourcePath,
       transferred: {
-        total,
+        total: transferredCount,
         byType,
       },
       skipped: {
-        lowConfidence: Math.floor(total * 0.15),
-        duplicates: Math.floor(total * 0.08),
-        conflicts: Math.floor(total * 0.03),
+        lowConfidence,
+        duplicates,
+        conflicts,
       },
       stats: {
-        avgConfidence: 0.82 + (minConfidence > 0.8 ? 0.1 : 0),
-        avgAge: '3 days',
+        avgConfidence: confidenceCount > 0 ? Number((confidenceSum / confidenceCount).toFixed(3)) : null,
+        avgAgeDays: ageCount > 0 ? Number((ageSumMs / ageCount / 86_400_000).toFixed(1)) : null,
       },
       dataSource: 'source-project',
     };
@@ -2210,7 +2369,15 @@ export const hooksSessionEnd: MCPTool = {
   handler: async (params: Record<string, unknown>) => {
     const saveState = params.saveState !== false;
     const shouldStopDaemon = params.stopDaemon !== false;
-    const sessionId = `session-${Date.now() - 3600000}`; // Default session (1 hour ago)
+    const session = loadActiveSessionState();
+    if (!session) {
+      throw new Error('No active session state found at .claude-flow/sessions/current.json');
+    }
+    const sessionId = session.id;
+    const endedAt = Date.now();
+    const duration = Math.max(0, endedAt - Date.parse(session.startedAt));
+    const activity = loadSessionActivity(session, endedAt);
+    const summary = buildSessionSummary(activity, duration);
 
     // Stop daemon if enabled
     let daemonStopped = false;
@@ -2224,12 +2391,10 @@ export const hooksSessionEnd: MCPTool = {
       }
     }
 
-    // Read actual counts from stores
+    // Read aggregate store data for the remaining compatibility metrics.
     const store = loadMemoryStore();
     const allEntries = Object.values(store.entries);
-    const taskCount = allEntries.filter(e => e.key.includes('task')).length;
     const agentCount = allEntries.filter(e => e.key.includes('agent')).length;
-    const patternCount = allEntries.filter(e => e.key.includes('pattern')).length;
     const trajectoryCount = activeTrajectories.size;
 
     // Check for pending-insights.jsonl
@@ -2251,9 +2416,9 @@ export const hooksSessionEnd: MCPTool = {
       bridge = await import('../memory/memory-bridge.js');
       const result = await bridge.bridgeSessionEnd({
         sessionId,
-        summary: saveState ? 'Session ended with state saved' : 'Session ended',
-        tasksCompleted: taskCount,
-        patternsLearned: patternCount,
+        summary,
+        tasksCompleted: activity.tasksCompleted,
+        patternsLearned: activity.patternsLearned,
       });
       if (result) {
         sessionPersistence = {
@@ -2276,19 +2441,19 @@ export const hooksSessionEnd: MCPTool = {
 
     return {
       sessionId,
-      duration: 3600000, // 1 hour in ms
+      duration,
       statePath: saveState ? `.claude/sessions/${sessionId}.json` : undefined,
       daemon: { stopped: daemonStopped },
       sessionPersistence: sessionPersistence || { controller: 'none', persisted: false },
       summary: {
-        tasksExecuted: taskCount,
-        filesModified: 0,
+        tasksExecuted: activity.tasksCompleted,
+        filesModified: activity.editsRecorded,
         agentsSpawned: agentCount,
         pendingInsights: insightCount,
         memoryEntries: allEntries.length,
       },
       learningUpdates: {
-        patternsLearned: patternCount,
+        patternsLearned: activity.patternsLearned,
         trajectoriesRecorded: trajectoryCount,
       },
     };
@@ -2445,7 +2610,39 @@ export const hooksIntelligence: MCPTool = {
     const ewcAvailable = (await getEWCConsolidator()) !== null;
     const loraAvailable = (await getLoRAAdapter()) !== null;
 
+    // #2940: `forceTraining` (CLI `hooks intelligence --train`) was declared
+    // on this tool's input schema but never read — the handler always
+    // returned the same read-only status dashboard, so `lastAdaptation`
+    // (what `--status` reports as "Last Training") could never move no
+    // matter how many times `--train` ran. Actually distill when asked,
+    // and report honestly rather than always implying success:
+    // `attempted: false` (flag not passed), `trained: true` (real work
+    // happened, lastAdaptation now current), or `trained: false` with a
+    // reason (nothing new to distill, or distillation unavailable).
+    const training: { attempted: boolean; trained: boolean; patternsDistilled?: number; ewcPenalty?: number; reason?: string } =
+      { attempted: false, trained: false };
+    if (params.forceTraining) {
+      training.attempted = true;
+      try {
+        const { distillLearning } = await import('../memory/intelligence.js');
+        const result = await distillLearning();
+        if (result) {
+          training.trained = true;
+          training.patternsDistilled = result.patternsDistilled;
+          training.ewcPenalty = result.ewcPenalty;
+          if (result.patternsDistilled === 0) {
+            training.reason = 'no new trajectories to distill since the last training cycle';
+          }
+        } else {
+          training.reason = 'intelligence system unavailable — could not initialize SONA/ReasoningBank';
+        }
+      } catch (error) {
+        training.reason = `distillation failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+
     return {
+      training,
       mode,
       status: 'active',
       components: {

@@ -976,8 +976,67 @@ memory_search_unified({ query: "authentication security", limit: 5 })
   publishing.
 - Publish from a clean reviewed commit/tag-equivalent worktree. Do not ship
   unrelated uncommitted changes.
+- A fresh worktree has two separate dependency trees to install before anything
+  builds: `npm install` at repo root (npm workspaces), AND `pnpm install` inside
+  `v3/` (a separate pnpm workspace — root `prepare-root-publish.mjs` shells out to
+  `pnpm --filter` to build `v3/@claude-flow/{shared,hooks,guidance}`, which fails
+  with `spawn ENOENT` on `tsc` if `v3/node_modules` was never populated).
 - Use the existing authenticated `ruvnet` npm session. Do not replace it with a
   token from another GCP project.
+
+**`npm publish` auth — FIXED (2026-07-30):** use the `NPM_TOKEN` secret directly,
+via a throwaway `.npmrc` with `NPM_CONFIG_USERCONFIG` — same pattern as the
+helpers-signing-key handling. It is mirrored in two GCP projects — `ruv-dev`
+(version 3+) and `cognitum-20260110` (version 7+) — so either project's copy
+is current; use whichever `gcloud` session is already authenticated. This is a
+granular access token ("ruflo publishjing", expires 2026-10-28) with
+`package: write` + `bypass_2fa: true`, scoped broadly enough to cover
+`@claude-flow/cli`, `claude-flow`, and `ruflo` (plus the `cognitum`/
+`cognitum-one` orgs). Confirmed end-to-end against the real registry (not just
+a permissions probe): `npm publish` for `@claude-flow/cli` succeeded via this
+token with zero OTP/WebAuthn prompt, and
+`npm dist-tag add` against both a scoped (`@claude-flow/cli`) and unscoped
+(`claude-flow`) package also went through with no prompt.
+
+**Why the earlier `NPM_TOKEN` version failed:** versions 1/2 of that secret
+were older classic automation tokens, and npm has been restricting tokens that
+bypass 2FA for writes account-wide (the login flow prints this notice —
+`gh.io/npm-gat-bypass2fa-deprecation`). Version 3 is a **granular access
+token** created explicitly for this purpose, which is npm's supported
+replacement path (its own 2FA-bypass flag still works for a granular token,
+unlike the deprecated classic automation tokens). If this token's `bypass_2fa`
+flag or scope ever gets narrowed/expired (check expiry above), the fallback
+is the WebAuthn dance below — but try this path first every time.
+
+```bash
+gcloud secrets versions access latest --secret=NPM_TOKEN --project=ruv-dev > /tmp/.npmrc-publish-raw
+printf '//registry.npmjs.org/:_authToken=%s\n' "$(cat /tmp/.npmrc-publish-raw)" > /tmp/.npmrc-publish
+rm -f /tmp/.npmrc-publish-raw
+NPM_CONFIG_USERCONFIG=/tmp/.npmrc-publish npm publish   # from the package dir, with signing-key env vars for @claude-flow/cli
+NPM_CONFIG_USERCONFIG=/tmp/.npmrc-publish npm dist-tag add <pkg>@<version> alpha
+NPM_CONFIG_USERCONFIG=/tmp/.npmrc-publish npm dist-tag add <pkg>@<version> v3alpha
+shred -u /tmp/.npmrc-publish 2>/dev/null || rm -f /tmp/.npmrc-publish   # ALWAYS clean up, same discipline as the signing key
+```
+
+**Fallback — WebAuthn procedure, if the token above is dead:** the `ruvnet`
+account's 2FA method is a WebAuthn security key, not TOTP (no numeric
+`--otp=<code>` exists). This must be driven by the human (an agent cannot
+approve a WebAuthn browser prompt):
+1. Human goes to npmjs.com → account 2FA settings → turns OFF "Require
+   two-factor authentication for write actions" (narrows to auth-only, not a
+   full 2FA disable), then runs `npm login` in their own terminal to refresh
+   the session under the new setting.
+2. Agent can then run `npm publish` directly via Bash with no further prompt.
+3. **`npm dist-tag add` still requires a fresh WebAuthn approval PER CALL**
+   regardless of the write-2FA setting — 6 individual browser approvals for a
+   3-package release (alpha + v3alpha × 3), not 1. Tell the human up front.
+- After every dist-tag call (or if unsure), verify with
+  `npm view <pkg> dist-tags --json` — don't trust the CLI's own stdout alone, since
+  a WebAuthn prompt that's still pending in the browser produces no terminal
+  output an agent can see.
+- Confirm the version actually landed (`npm view <pkg>@<version> version`) before
+  telling the user publishing succeeded, same reasoning: a mid-publish approval
+  that never gets answered fails silently from an agent's point of view.
 
 **Helpers signing key (required for `@claude-flow/cli` publish):** `npm publish`'s
 `prepublishOnly` runs `scripts/sign-helpers.mjs`, which needs a private key to sign
