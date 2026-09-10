@@ -28,7 +28,6 @@ export default defineConfig({
         if (source.startsWith('@ruvector/')) return { id: source, external: true };
         if (source.startsWith('@huggingface/transformers')) return { id: source, external: true };
         if (source.startsWith('@xenova/transformers')) return { id: source, external: true };
-        if (source.startsWith('@noble/ed25519')) return { id: source, external: true };
         return null;
       },
     },
@@ -37,6 +36,15 @@ export default defineConfig({
     environment: 'node',
     include: ['__tests__/**/*.test.ts'],
     globals: true,
+    // Vitest's 5s default is unrealistic for this suite: a number of the
+    // memory/intelligence tests initialise a real ONNX embedder and a SQLite
+    // database. In isolation they finish quickly, but the full suite saturates
+    // every core (~440% CPU), and under that contention they exceeded 5s and
+    // failed with "Test timed out in 5000ms" — never an assertion failure.
+    // Because it depended on scheduling, a different file timed out on each
+    // run, which read as flakiness rather than a fixed timeout being too tight.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       enabled: false,
     },

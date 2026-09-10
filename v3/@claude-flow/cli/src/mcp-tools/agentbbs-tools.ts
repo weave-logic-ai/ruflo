@@ -21,36 +21,65 @@
  *     so callers see one contract regardless of install state
  *   - Phase 1: polling-based watch (streaming subscriptions are Phase 4)
  *
+ * Presence check: the published `agentbbs` package (as of 0.2.1) is a CLI-only
+ * launcher — a `bin` script with no importable JS entry point (no `main` /
+ * `exports` field) — that downloads/builds a Rust binary and shells out to it.
+ * `await import('agentbbs')` can therefore never resolve, even when the CLI is
+ * correctly installed and on PATH: there is no module for Node to find. This
+ * previously made every tool report `degraded: true` unconditionally,
+ * regardless of install state. Detect real availability instead by probing the
+ * CLI itself, matching how the rest of this codebase treats optional
+ * command-line tools (`shutil.which()`-style guards) rather than assuming a
+ * package shape the dependency doesn't have.
+ *
  * @module @claude-flow/cli/mcp-tools/agentbbs
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { resolve, isAbsolute, join } from 'node:path';
 import { randomBytes, createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import type { MCPTool } from './types.js';
+import {
+  getNodeIdentity,
+  signEnvelope,
+  addPeer,
+  removePeer,
+  readPeers,
+  syncRoomFromPeer,
+  serveFederation,
+  validateRoomId as fedValidateRoomId,
+  MAX_PEERS,
+  MAX_HOPS,
+} from './agentbbs-federation.js';
 import { getProjectCwd } from './types.js';
 
-const PACKAGE_NAME = 'agentbbs';
+const CLI_NAME = 'agentbbs';
 
-// Cache: amortize dynamic-import cost across handler calls.
-// null = not yet attempted; false = unavailable; module = loaded.
-let _agentbbsMod: any = null;
-let _loadAttempted = false;
+// Cache: amortize the subprocess probe cost across handler calls within a
+// process. null = not yet probed; boolean = probe result.
+let _cliAvailable: boolean | null = null;
 
-async function loadAgentbbs(): Promise<any | null> {
-  if (_loadAttempted) return _agentbbsMod || null;
-  _loadAttempted = true;
+function agentbbsCliAvailable(): boolean {
+  if (_cliAvailable !== null) return _cliAvailable;
+  const bin = process.env.AGENTBBS_BIN || CLI_NAME;
   try {
-    _agentbbsMod = await import(PACKAGE_NAME);
-    return _agentbbsMod;
-  } catch (err: any) {
-    if (err && (err.code === 'ERR_MODULE_NOT_FOUND' || err.code === 'MODULE_NOT_FOUND' ||
-                /Cannot find (module|package)/i.test(String(err?.message)))) {
-      _agentbbsMod = false;
-      return null;
-    }
-    throw err;
+    // On Windows npm's global-install shim is `agentbbs.cmd`, and
+    // child_process cannot spawn a .cmd without going through cmd.exe, which
+    // is what resolves the PATHEXT extension. POSIX keeps shell:false so the
+    // AGENTBBS_BIN override is never shell-interpreted — same convention as
+    // browser-tools.ts and commands/init.ts.
+    execFileSync(bin, ['--version'], {
+      stdio: 'ignore',
+      timeout: 5000,
+      shell: process.platform === 'win32',
+      windowsHide: true,
+    });
+    _cliAvailable = true;
+  } catch {
+    _cliAvailable = false;
   }
+  return _cliAvailable;
 }
 
 function degradedResult(reason: string): { success: true; degraded: true; reason: string } {
@@ -140,11 +169,21 @@ function nextSeq(path: string): number {
  * agentbbs server's responsibility (nonce JTI tracking, per ADR-164 §3.2.4).
  * Phase 2+ will wire this to the existing federation Ed25519 keypair.
  */
+// Use @noble/ed25519 (already a hard dep of @claude-flow/cli for IPFS
+// signing). Memoized behind one loader — two separate dynamic `import()`
+// call sites for the same bare specifier in this module tripped up the
+// test runner's dependency pre-bundling (surfaced once federation_bbs_
+// human_join actually ran instead of always short-circuiting to degraded).
+let _edMod: any = null;
+async function loadEd25519(): Promise<any> {
+  if (!_edMod) _edMod = await import('@noble/ed25519');
+  return _edMod;
+}
+
 let _signingKey: { priv: Uint8Array; pub: Uint8Array } | null = null;
 async function getSigningKey(): Promise<{ priv: Uint8Array; pub: Uint8Array }> {
   if (_signingKey) return _signingKey;
-  // Use @noble/ed25519 (already a hard dep of @claude-flow/cli for IPFS signing).
-  const ed: any = await import('@noble/ed25519');
+  const ed = await loadEd25519();
   const priv = ed.utils.randomPrivateKey
     ? ed.utils.randomPrivateKey()
     : randomBytes(32);
@@ -191,8 +230,7 @@ export const agentbbsTools: MCPTool[] = [
       const roomLabel = validateRoomLabel(String(input.roomLabel));
       const basePath = resolveBasePath(input.basePath as string | undefined);
 
-      const api = await loadAgentbbs();
-      if (!api) return degradedResult('agentbbs-not-found');
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
 
       ensureDir(basePath);
 
@@ -280,20 +318,24 @@ export const agentbbsTools: MCPTool[] = [
         throw new Error('payload must be a JSON object');
       }
 
-      const api = await loadAgentbbs();
-      if (!api) return degradedResult('agentbbs-not-found');
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
 
       ensureDir(basePath);
       const logPath = roomLogPath(basePath, roomId);
-      const env: BbsEnvelope = {
+      const base: BbsEnvelope = {
         envelopeId: base64url(randomBytes(12)),
         roomId,
         seq: nextSeq(logPath),
         msgType,
         payload: input.payload,
         timestamp: new Date().toISOString(),
-        signature: input.signature ? String(input.signature) : undefined,
       };
+      // Phase 2: sign with this host's persistent node identity so peers can
+      // attribute and verify the envelope after a cross-host merge. An
+      // explicitly supplied signature is preserved rather than overwritten.
+      const env: BbsEnvelope = input.signature
+        ? { ...base, signature: String(input.signature) }
+        : (await signEnvelope(basePath, base as any)) as any;
       appendFileSync(logPath, JSON.stringify(env) + '\n');
 
       // Phase 1: recipientHopCount is always 0 (single-node). Phase 4+ will
@@ -336,8 +378,7 @@ export const agentbbsTools: MCPTool[] = [
       const basePath = resolveBasePath(input.basePath as string | undefined);
       const roomId = validateRoomId(String(input.roomId));
 
-      const api = await loadAgentbbs();
-      if (!api) return degradedResult('agentbbs-not-found');
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
 
       const limitRaw = typeof input.limit === 'number' ? input.limit : 50;
       const limit = Math.max(1, Math.min(500, Math.trunc(limitRaw)));
@@ -383,8 +424,7 @@ export const agentbbsTools: MCPTool[] = [
     handler: async (input) => {
       const roomId = validateRoomId(String(input.roomId));
 
-      const api = await loadAgentbbs();
-      if (!api) return degradedResult('agentbbs-not-found');
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
 
       const ttlRaw = typeof input.ttlSeconds === 'number' ? input.ttlSeconds : 300;
       const ttlSeconds = Math.max(30, Math.min(900, Math.trunc(ttlRaw)));
@@ -395,7 +435,7 @@ export const agentbbsTools: MCPTool[] = [
       const payload = { roomId, nonce, expiresAt };
       const canonical = JSON.stringify(payload);
 
-      const ed: any = await import('@noble/ed25519');
+      const ed = await loadEd25519();
       const { priv, pub } = await getSigningKey();
       const sigBytes: Uint8Array = await (ed.signAsync ?? ed.sign)(
         new TextEncoder().encode(canonical),
@@ -420,6 +460,135 @@ export const agentbbsTools: MCPTool[] = [
         sshCommand,
         handshakeToken: token,
         expiresAt,
+      };
+    },
+  },
+
+  // ---------------------------------------------------------------- Phase 2
+  {
+    name: 'federation_bbs_identity',
+    description: "agentbbs Phase 2 — return this host's persistent federation node identity (nodeId + Ed25519 public key), creating it on first call. Give the nodeId and publicKey to a peer so they can pin you with federation_bbs_peer_add. The private key never leaves this host and is never returned. Use when you are bootstrapping a new host into the federation and a peer needs something to pin. Reading node-identity.json directly is wrong because it also holds the private key, and the file is created lazily so it may not exist yet.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        basePath: { type: 'string', description: 'Override the .agentbbs directory.' },
+      },
+    },
+    handler: async (input) => {
+      const basePath = resolveBasePath(input.basePath as string | undefined);
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
+      const id = await getNodeIdentity(basePath);
+      return { success: true, nodeId: id.nodeId, publicKey: id.publicKey, createdAt: id.createdAt };
+    },
+  },
+  {
+    name: 'federation_bbs_peer_add',
+    description: `agentbbs Phase 2 — pin a remote federation peer by nodeId, URL and Ed25519 public key. The key is pinned at add time and every envelope merged from this peer is verified against it, so a hostile peer cannot forge another node's envelopes. Re-adding a known nodeId with a different key is refused; remove it first. Max ${MAX_PEERS} peers. Use when you have a peer's identity out of band and want to start syncing with it. Trusting a key carried inside an incoming envelope is wrong because that only proves the sender holds some key, not that they are the node they claim to be.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        nodeId: { type: 'string', description: "Peer's 16-hex nodeId from its federation_bbs_identity." },
+        url: { type: 'string', description: 'Peer base URL, e.g. http://100.104.125.72:7777' },
+        publicKey: { type: 'string', description: "Peer's 64-hex Ed25519 public key." },
+        label: { type: 'string', description: 'Optional human label.' },
+        basePath: { type: 'string' },
+      },
+      required: ['nodeId', 'url', 'publicKey'],
+    },
+    handler: async (input) => {
+      const basePath = resolveBasePath(input.basePath as string | undefined);
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
+      const peer = addPeer(basePath, {
+        nodeId: String(input.nodeId),
+        url: String(input.url),
+        publicKey: String(input.publicKey),
+        label: input.label ? String(input.label) : undefined,
+      });
+      return { success: true, peer: { nodeId: peer.nodeId, url: peer.url, label: peer.label, addedAt: peer.addedAt } };
+    },
+  },
+  {
+    name: 'federation_bbs_peers',
+    description: 'agentbbs Phase 2 — list pinned federation peers with last-sync state. Public keys are returned so an operator can compare a pin against what the peer reports; private material is never included. Use when you want to audit who this host will accept envelopes from, or unpin a peer. Editing peers.json by hand is wrong because a malformed entry silently disables verification for that peer on the next sync.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        remove: { type: 'string', description: 'Optional nodeId to unpin instead of listing.' },
+        basePath: { type: 'string' },
+      },
+    },
+    handler: async (input) => {
+      const basePath = resolveBasePath(input.basePath as string | undefined);
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
+      if (input.remove) {
+        const removed = removePeer(basePath, String(input.remove));
+        return { success: true, removed, nodeId: String(input.remove) };
+      }
+      return { success: true, peers: readPeers(basePath) };
+    },
+  },
+  {
+    name: 'federation_bbs_serve',
+    description: 'agentbbs Phase 2 — start the read-only pull endpoint peers fetch from (GET /agentbbs/v1/rooms/:roomId/envelopes). Binds 127.0.0.1 unless bindHost is given explicitly, so room contents are never exposed on a routable interface by accident. There is no route that mutates state. Use when this host needs to be reachable by peers that pull from it. Exposing the .agentbbs directory over a static file server is wrong because that would serve node-identity.json, which contains the private key.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        port: { type: 'number', description: 'Port to listen on. 0 picks a free one.' },
+        bindHost: { type: 'string', description: 'Interface to bind. Defaults to 127.0.0.1; set a tailnet IP to federate.' },
+        basePath: { type: 'string' },
+      },
+    },
+    handler: async (input) => {
+      const basePath = resolveBasePath(input.basePath as string | undefined);
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
+      const { port, host } = await serveFederation(basePath, {
+        port: typeof input.port === 'number' ? input.port : undefined,
+        bindHost: input.bindHost ? String(input.bindHost) : undefined,
+      });
+      const id = await getNodeIdentity(basePath);
+      return { success: true, listening: `http://${host}:${port}`, nodeId: id.nodeId, publicKey: id.publicKey };
+    },
+  },
+  {
+    name: 'federation_bbs_sync',
+    description: `agentbbs Phase 2 — pull a room from pinned peers and union-merge what verifies. Merge is keyed on envelopeId so it is idempotent and order-independent; unsigned, misattributed, oversize and over-hop (>${MAX_HOPS}) envelopes are dropped and counted rather than merged. Use after publish to propagate, or on a timer to converge. Use when you want to converge this host's rooms with its peers, on demand or on a timer. Copying room-*.jsonl between machines is wrong because it bypasses signature verification, dedupe and the hop limit, so a single hostile or looping file can corrupt the log.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        roomId: { type: 'string', description: 'Room to sync. Same label yields the same roomId on every host.' },
+        nodeId: { type: 'string', description: 'Optional single peer to sync from; default is all pinned peers.' },
+        basePath: { type: 'string' },
+      },
+      required: ['roomId'],
+    },
+    handler: async (input) => {
+      const basePath = resolveBasePath(input.basePath as string | undefined);
+      const roomId = fedValidateRoomId(String(input.roomId));
+      if (!agentbbsCliAvailable()) return degradedResult('agentbbs-not-found');
+
+      const all = readPeers(basePath);
+      const targets = input.nodeId ? all.filter(p => p.nodeId === String(input.nodeId)) : all;
+      if (targets.length === 0) return { success: true, roomId, peersSynced: 0, results: [], note: 'no pinned peers' };
+
+      type SyncRow = { peerNodeId: string; roomId: string; merged: number; skippedDuplicate: number;
+        skippedUnverified: number; skippedOversize: number; skippedHopLimit: number; error?: string };
+      const results: SyncRow[] = [];
+      for (const peer of targets) {
+        try {
+          results.push(await syncRoomFromPeer(basePath, peer, roomId));
+        } catch (e) {
+          // One unreachable peer must not fail the whole sync — the merge is
+          // idempotent, so this peer simply catches up on the next run.
+          results.push({ peerNodeId: peer.nodeId, roomId, error: (e as Error).message,
+            merged: 0, skippedDuplicate: 0, skippedUnverified: 0, skippedOversize: 0, skippedHopLimit: 0 });
+        }
+      }
+      return {
+        success: true,
+        roomId,
+        peersSynced: results.length,
+        totalMerged: results.reduce((n, r) => n + (r.merged || 0), 0),
+        results,
       };
     },
   },

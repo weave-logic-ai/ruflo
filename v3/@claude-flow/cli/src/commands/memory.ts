@@ -9,6 +9,28 @@ import { select, confirm, input } from '../prompt.js';
 import { callMCPTool, MCPClientError } from '../mcp-client.js';
 import { distillCommand } from './memory-distill.js';
 import { backupCommand } from './memory-backup.js';
+import { countSiblingStoreRows } from '../memory/sibling-store.js';
+import { resolveDbPath } from '../memory/memory-initializer.js';
+
+/**
+ * #3228: a miss in one store is not a miss in the memory.
+ *
+ * 3.41.1 disclosed the sibling AgentDB store from `memory list` only. `retrieve`,
+ * `search` and `stats` kept reporting a clean negative — "Key not found", "No
+ * results" — while the rows sat in the file this interface does not read. On the
+ * reported Windows install that is 31,673 rows in the other store answering
+ * `found:false`. A confident negative is worse than an error, because nothing
+ * prompts anyone to look further.
+ */
+async function warnIfSiblingHasRows(pathFlag: unknown): Promise<void> {
+  const unread = await countSiblingStoreRows(resolveDbPath(pathFlag as string | undefined));
+  if (unread && unread.rows > 0) {
+    output.printWarning(
+      `This read covered one store. ${unread.rows} entries are in ${unread.path} and were not searched. ` +
+      `That store is written by the MCP/AgentDB path; read it with --path ${unread.path}.`,
+    );
+  }
+}
 
 // Memory backends
 const BACKENDS = [
@@ -307,6 +329,7 @@ const retrieveCommand: Command = {
 
       if (!result.found || !result.entry) {
         output.printWarning(`Key not found: ${key}`);
+        await warnIfSiblingHasRows(ctx.flags.path);
         return { success: false, exitCode: 1, data: { key, found: false } };
       }
 
@@ -381,7 +404,14 @@ const searchCommand: Command = {
       name: 'threshold',
       description: 'Similarity threshold (0-1)',
       type: 'number',
-      default: 0.7
+      // MUST stay <= 0.4. The recall fusion in bridgeSearchEntries scores a
+      // full-coverage exact-keyword hit as 0.6*max(0,semantic) + 0.4*lexical,
+      // so when the semantic cosine is <= 0 (routine for a one-word query) a
+      // perfect keyword match tops out at exactly 0.40. #2790 raised this
+      // default to 0.7, which silently re-broke #2558: `memory search` matched
+      // content word-for-word and still returned nothing. Regression guard:
+      // __tests__/memory-search-recall-2558.test.ts.
+      default: 0.3
     },
     {
       name: 'type',
@@ -450,7 +480,7 @@ const searchCommand: Command = {
     // coalescing preserves an explicit zero. Fallback aligned with the
     // option's declared `default: 0.7` (was `0.3` — the two disagreed
     // and --help advertised a default the code did not honor).
-    const threshold = ctx.flags.threshold as number ?? 0.7;
+    const threshold = ctx.flags.threshold as number ?? 0.3;
     const searchType = ctx.flags.type as string || 'semantic';
     const buildHnsw = (ctx.flags['build-hnsw'] || ctx.flags.buildHnsw) as boolean;
     const requestedIntent = (ctx.flags.intent as string) || 'mixed';
@@ -701,6 +731,7 @@ const searchCommand: Command = {
 
       if (results.length === 0) {
         output.printWarning('No results found');
+        await warnIfSiblingHasRows(ctx.flags.path);
         output.writeln(output.dim('Try: claude-flow memory store -k "key" --value "data"'));
         return { success: true, data: [] };
       }
@@ -789,6 +820,7 @@ const listCommand: Command = {
 
       if (entries.length === 0) {
         output.printWarning('No entries found');
+        await warnIfSiblingHasRows(ctx.flags.path);
         output.printInfo('Store data: claude-flow memory store -k "key" --value "data"');
         return { success: true, data: [] };
       }
@@ -807,6 +839,18 @@ const listCommand: Command = {
 
       output.writeln();
       output.printInfo(`Showing ${entries.length} of ${listResult.total} entries`);
+
+      // #3196: AgentDB owns a sibling store next to this one. `total` counts only
+      // the file we read, so a bare count reads as "this is everything" while rows
+      // sit unreadable next door. Silence would be recoverable; a confident wrong
+      // total is not, because nothing prompts anyone to look further.
+      const unread = await countSiblingStoreRows(resolveDbPath(ctx.flags.path as string | undefined));
+      if (unread && unread.rows > 0) {
+        output.printWarning(
+          `${unread.rows} more entries are in ${unread.path} and were not read here. ` +
+          `That store is written by the MCP/AgentDB path; read it with --path ${unread.path}.`
+        );
+      }
 
       return { success: true, data: listResult.entries };
     } catch (error) {
