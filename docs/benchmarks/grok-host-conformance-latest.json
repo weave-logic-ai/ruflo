@@ -1,0 +1,1785 @@
+{
+  "id": "bench-mrthua56",
+  "title": "Grok host conformance bench (ADR-320 Phase 4)",
+  "host": "grok",
+  "cli": "/Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js",
+  "repo": "/Users/mathewbeane/dev/ruflo",
+  "timestamp": "2026-07-20T17:23:48.613Z",
+  "summary": {
+    "total": 93,
+    "pass": 92,
+    "criticalFail": 0,
+    "warn": 1,
+    "ok": true
+  },
+  "domains": {
+    "host-surface": {
+      "pass": 15,
+      "fail": 0,
+      "warn": 0
+    },
+    "inventory": {
+      "pass": 26,
+      "fail": 0,
+      "warn": 1
+    },
+    "teams": {
+      "pass": 10,
+      "fail": 0,
+      "warn": 0
+    },
+    "swarm": {
+      "pass": 9,
+      "fail": 0,
+      "warn": 0
+    },
+    "hive-mind": {
+      "pass": 11,
+      "fail": 0,
+      "warn": 0
+    },
+    "learning": {
+      "pass": 10,
+      "fail": 0,
+      "warn": 0
+    },
+    "neural": {
+      "pass": 2,
+      "fail": 0,
+      "warn": 0
+    },
+    "cli": {
+      "pass": 9,
+      "fail": 0,
+      "warn": 0
+    }
+  },
+  "requiredPrefixes": [
+    "team_",
+    "swarm_",
+    "hive-mind_",
+    "agent_",
+    "memory_",
+    "hooks_",
+    "neural_",
+    "embeddings_",
+    "task_",
+    "session_",
+    "config_",
+    "performance_"
+  ],
+  "brainGrounding": {
+    "source": "ruvnet-brain search_ruvnet: ruflo primer + MCP tool groups",
+    "capabilities": [
+      "Multi-agent swarm orchestration",
+      "Hive-mind / queen consensus",
+      "Memory + AgentDB + embeddings",
+      "Learning & reasoning pipelines (hooks/neural)",
+      "Agent Teams host-agnostic bus (ADR-320)",
+      "Grok host surface (init --grok)"
+    ]
+  },
+  "results": [
+    {
+      "id": "file:.grok/config.toml",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:.grok/rules/ruflo-grok.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:.grok/agents/ruflo-architect.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:.grok/agents/ruflo-coder.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:.grok/agents/ruflo-tester.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:.grok/agents/ruflo-reviewer.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:.grok/skills/agent-teams-grok/SKILL.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:.grok/skills/handoff/SKILL.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:scripts/grok-team-bus.mjs",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:v3/@claude-flow/cli/templates/grok/config.toml",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:v3/@claude-flow/cli/src/mcp-tools/team-tools.ts",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "file:v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "config:ruflo-mcp",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "mcp_servers.ruflo present"
+    },
+    {
+      "id": "config:brain-docs",
+      "domain": "host-surface",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "Brain/KB_DIR documented"
+    },
+    {
+      "id": "template:home-placeholder",
+      "domain": "host-surface",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "{{HOME}}/ placeholder present"
+    },
+    {
+      "id": "mcp-tools:list",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 103,
+      "detail": "318 tools listed"
+    },
+    {
+      "id": "prefix:team_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:swarm_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:hive-mind_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:agent_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:memory_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:hooks_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:neural_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:embeddings_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:task_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:session_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:config_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix:performance_",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "present"
+    },
+    {
+      "id": "prefix-opt:security_",
+      "domain": "inventory",
+      "critical": false,
+      "ok": false,
+      "ms": 0,
+      "detail": "absent (optional)"
+    },
+    {
+      "id": "prefix-opt:claims_",
+      "domain": "inventory",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "present (optional)"
+    },
+    {
+      "id": "prefix-opt:guidance_",
+      "domain": "inventory",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "present (optional)"
+    },
+    {
+      "id": "prefix-opt:browser_",
+      "domain": "inventory",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "present (optional)"
+    },
+    {
+      "id": "capability:security",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "security-related tools present"
+    },
+    {
+      "id": "team-tool:team_create",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_spawn",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_send",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_inbox",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_broadcast",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_plan",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_status",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_on_stop",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team-tool:team_shutdown",
+      "domain": "inventory",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "registered"
+    },
+    {
+      "id": "team_create",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "create",
+        "team": {
+          "id": "bench-mrthua56-team",
+          "name": "bench-mrthua56-team",
+          "topology": "hierarchical",
+          "maxAgents": 4,
+          "status": "active",
+          "createdAt": "2026-07-20T17:23:38.788Z",
+          "host": "grok",
+          "members": {},
+          "plan": {
+            "steps": [],
+            "index": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "team_plan",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 101,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "plan",
+        "plan": {
+          "steps": [
+            {
+              "id": "architect",
+              "agent": "architect",
+              "status": "ready"
+            },
+            {
+              "id": "developer",
+              "agent": "developer",
+              "status": "pending"
+            },
+            {
+              "id": "tester",
+              "agent": "tester",
+              "status": "pending"
+            },
+            {
+              "id": "reviewer",
+              "agent": "reviewer",
+              "status": "pending"
+            }
+          ],
+          "index": 0,
+          "updatedAt": "2026-07-20T17:23:38.889Z"
+        }
+      }
+    },
+    {
+      "id": "team_spawn",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "spawn",
+        "spawnPlan": {
+          "teamId": "bench-mrthua56-team",
+          "name": "architect",
+          "role": "architect",
+          "prompt": "You are \"architect\" (role: architect) on team \"bench-mrthua56-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-mrthua56-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-mrthua56-team.\nPrimary next agent(s): developer\nCheck inbox at start via team_inbox (team=bench-mrthua56-team, agent=architect).\n\nTask:\nDesign for conformance bench",
+          "next": [
+            "developer"
+          ],
+          "host": {
+            "grok": {
+              "subagent_type": "plan",
+              "capability_mode": "read-only",
+              "isolation": "none",
+              "background": true,
+              "description": "architect:architect"
+            },
+            "claude": {
+              "taskType": "system-architect",
+              "note": "optional back-compat path via Task tool"
+            }
+          }
+        },
+        "teamId": "bench-mrthua56-team"
+      }
+    },
+    {
+      "id": "team_send",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 104,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "send",
+        "message": {
+          "id": "msg_1784568219094_dicwre",
+          "teamId": "bench-mrthua56-team",
+          "from": "architect",
+          "to": "developer",
+          "summary": "design",
+          "content": "Layered architecture for bench",
+          "type": "handoff",
+          "priority": 2,
+          "timestamp": "2026-07-20T17:23:39.094Z"
+        }
+      }
+    },
+    {
+      "id": "team_status:pendingMail",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 101,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "status",
+        "team": {
+          "id": "bench-mrthua56-team",
+          "name": "bench-mrthua56-team",
+          "topology": "hierarchical",
+          "maxAgents": 4,
+          "status": "active",
+          "createdAt": "2026-07-20T17:23:38.788Z",
+          "host": "grok",
+          "members": {
+            "architect": {
+              "name": "architect",
+              "role": "architect",
+              "status": "registered",
+              "registeredAt": "2026-07-20T17:23:38.989Z",
+              "next": [
+                "developer"
+              ],
+              "spawn": {
+                "grok": {
+                  "subagent_type": "plan",
+                  "capability_mode": "read-only",
+                  "isolation": "none",
+                  "background": true,
+                  "description": "architect:architect"
+                },
+                "claude": {
+                  "taskType": "system-architect",
+                  "note": "optional back-compat path via Task tool"
+                }
+              }
+            }
+          },
+          "plan": {
+            "steps": [
+              {
+                "id": "architect",
+                "agent": "architect",
+                "status": "ready"
+              },
+              {
+                "id": "developer",
+                "agent": "developer",
+                "status": "pending"
+              },
+              {
+                "id": "tester",
+                "agent": "tester",
+                "status": "pending"
+              },
+              {
+                "id": "reviewer",
+                "agent": "reviewer",
+                "status": "pending"
+              }
+            ],
+            "index": 0,
+            "updatedAt": "2026-07-20T17:23:38.889Z"
+          }
+        },
+        "pendingMail": {
+          "architect": 2,
+          "developer": 6
+        }
+      }
+    },
+    {
+      "id": "team_spawn:developer",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "spawn",
+        "spawnPlan": {
+          "teamId": "bench-mrthua56-team",
+          "name": "developer",
+          "role": "developer",
+          "prompt": "You are \"developer\" (role: developer) on team \"bench-mrthua56-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-mrthua56-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-mrthua56-team.\nPrimary next agent(s): tester\nCheck inbox at start via team_inbox (team=bench-mrthua56-team, agent=developer).\n\nTask:\nImplement design",
+          "next": [
+            "tester"
+          ],
+          "host": {
+            "grok": {
+              "subagent_type": "general-purpose",
+              "capability_mode": "all",
+              "isolation": "worktree",
+              "background": true,
+              "description": "developer:developer"
+            },
+            "claude": {
+              "taskType": "coder",
+              "note": "optional back-compat path via Task tool"
+            }
+          }
+        },
+        "teamId": "bench-mrthua56-team"
+      }
+    },
+    {
+      "id": "team_inbox",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 102,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "inbox",
+        "agent": "developer",
+        "messages": [
+          {
+            "id": "msg_1784556555212_wnlvou",
+            "teamId": "session-continue-smoke",
+            "from": "architect",
+            "to": "developer",
+            "summary": "Design ready",
+            "content": "Smoke design complete. Implement MVP next.",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-07-20T14:09:15.212Z"
+          },
+          {
+            "id": "msg_1784568116347_iupiro",
+            "teamId": "bench-mrths2uz-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-07-20T17:21:56.347Z"
+          },
+          {
+            "id": "msg_1784568116746_p708n2",
+            "teamId": "bench-mrths2uz-team",
+            "from": "lead",
+            "to": "*",
+            "summary": "sync",
+            "content": "bench broadcast to members",
+            "type": "broadcast",
+            "priority": 2,
+            "timestamp": "2026-07-20T17:21:56.746Z"
+          },
+          {
+            "id": "msg_1784568197130_fiporw",
+            "teamId": "bench-mrthtt6y-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-07-20T17:23:17.130Z"
+          },
+          {
+            "id": "msg_1784568197532_3vnswj",
+            "teamId": "bench-mrthtt6y-team",
+            "from": "lead",
+            "to": "*",
+            "summary": "sync",
+            "content": "bench broadcast to members",
+            "type": "broadcast",
+            "priority": 2,
+            "timestamp": "2026-07-20T17:23:17.532Z"
+          },
+          {
+            "id": "msg_1784568219094_dicwre",
+            "teamId": "bench-mrthua56-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-07-20T17:23:39.094Z"
+          }
+        ],
+        "peek": true
+      }
+    },
+    {
+      "id": "team_broadcast",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 104,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "send",
+        "message": {
+          "id": "msg_1784568219501_didjox",
+          "teamId": "bench-mrthua56-team",
+          "from": "lead",
+          "to": "*",
+          "summary": "sync",
+          "content": "bench broadcast to members",
+          "type": "broadcast",
+          "priority": 2,
+          "timestamp": "2026-07-20T17:23:39.501Z"
+        }
+      }
+    },
+    {
+      "id": "team_on_stop",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 104,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "on-stop",
+        "agent": "architect",
+        "next": {
+          "id": "developer",
+          "agent": "developer",
+          "status": "ready"
+        },
+        "assign": {
+          "hint": "Spawn or resume agent \"developer\" for the next plan step",
+          "agent": "developer"
+        }
+      }
+    },
+    {
+      "id": "team_shutdown",
+      "domain": "teams",
+      "critical": true,
+      "ok": true,
+      "ms": 102,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "action": "shutdown",
+        "teamId": "bench-mrthua56-team"
+      }
+    },
+    {
+      "id": "swarm_init",
+      "domain": "swarm",
+      "critical": true,
+      "ok": true,
+      "ms": 102,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "swarmId": "swarm-1784568219810-5tnyph",
+        "topology": "hierarchical",
+        "strategy": "specialized",
+        "maxAgents": 6,
+        "initializedAt": "2026-07-20T17:23:39.810Z",
+        "config": {
+          "topology": "hierarchical",
+          "maxAgents": 6,
+          "strategy": "specialized",
+          "communicationProtocol": "message-bus",
+          "autoScaling": true,
+          "consensusMechanism": "majority"
+        },
+        "persisted": true
+      }
+    },
+    {
+      "id": "swarm_status",
+      "domain": "swarm",
+      "critical": true,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "swarmId": "swarm-1784568219810-5tnyph",
+        "status": "terminated",
+        "topology": "hierarchical",
+        "maxAgents": 6,
+        "agentCount": 0,
+        "taskCount": 0,
+        "config": {
+          "topology": "hierarchical",
+          "maxAgents": 6,
+          "strategy": "specialized",
+          "communicationProtocol": "message-bus",
+          "autoScaling": true,
+          "consensusMechanism": "majority"
+        },
+        "createdAt": "2026-07-20T17:23:39.810Z",
+        "updatedAt": "2026-07-20T17:23:39.910Z"
+      }
+    },
+    {
+      "id": "swarm_health",
+      "domain": "swarm",
+      "critical": true,
+      "ok": true,
+      "ms": 98,
+      "detail": "ok",
+      "data": {
+        "status": "degraded",
+        "healthy": false,
+        "swarmId": "swarm-1784568219810-5tnyph",
+        "topology": "hierarchical",
+        "agentCount": 0,
+        "checks": [
+          {
+            "name": "coordinator",
+            "status": "warn",
+            "message": "Swarm status: terminated"
+          },
+          {
+            "name": "agents",
+            "status": "info",
+            "message": "0 agents registered (max: 6)"
+          },
+          {
+            "name": "persistence",
+            "status": "ok",
+            "message": "State file persisted"
+          },
+          {
+            "name": "topology",
+            "status": "ok",
+            "message": "Topology: hierarchical"
+          }
+        ],
+        "checkedAt": "2026-07-20T17:23:40.007Z"
+      }
+    },
+    {
+      "id": "agent_spawn",
+      "domain": "swarm",
+      "critical": true,
+      "ok": true,
+      "ms": 101,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "agentId": "bench-mrthua56-coder",
+        "agentType": "coder",
+        "model": "sonnet",
+        "modelRoutedBy": "default",
+        "status": "registered",
+        "createdAt": "2026-07-20T17:23:40.107Z",
+        "note": "Agent registered for coordination. Three execution paths: (1) call agent_execute(agentId, prompt) — direct LLM call via Anthropic Messages API (requires ANTHROPIC_API_KEY); (2) Claude Code Task tool — spawns a real subagent; (3) claude -p — headless background instance."
+      }
+    },
+    {
+      "id": "agent_status",
+      "domain": "swarm",
+      "critical": true,
+      "ok": true,
+      "ms": 98,
+      "detail": "ok",
+      "data": {
+        "agentId": "bench-mrthua56-coder",
+        "agentType": "coder",
+        "status": "idle",
+        "health": 1,
+        "taskCount": 0,
+        "createdAt": "2026-07-20T17:23:40.107Z",
+        "lastResult": null
+      }
+    },
+    {
+      "id": "agent_list",
+      "domain": "swarm",
+      "critical": true,
+      "ok": true,
+      "ms": 99,
+      "detail": "ok",
+      "data": {
+        "agents": [
+          {
+            "agentId": "bench-coder-1",
+            "agentType": "coder",
+            "status": "idle",
+            "health": 1,
+            "taskCount": 0,
+            "createdAt": "2026-07-20T17:19:37.215Z"
+          },
+          {
+            "agentId": "bench-mrthua56-coder",
+            "agentType": "coder",
+            "status": "idle",
+            "health": 1,
+            "taskCount": 0,
+            "createdAt": "2026-07-20T17:23:40.107Z"
+          }
+        ],
+        "total": 2,
+        "filters": {}
+      }
+    },
+    {
+      "id": "agent_health",
+      "domain": "swarm",
+      "critical": false,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "agentId": "bench-mrthua56-coder",
+        "health": 1,
+        "status": "idle",
+        "healthy": true,
+        "taskCount": 0,
+        "uptime": 298
+      }
+    },
+    {
+      "id": "agent_terminate",
+      "domain": "swarm",
+      "critical": false,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "agentId": "bench-mrthua56-coder",
+        "terminated": true,
+        "terminatedAt": "2026-07-20T17:23:40.506Z"
+      }
+    },
+    {
+      "id": "swarm_shutdown",
+      "domain": "swarm",
+      "critical": true,
+      "ok": true,
+      "ms": 98,
+      "detail": "already terminated (ok)",
+      "data": {
+        "success": false,
+        "swarmId": "swarm-1784568219810-5tnyph",
+        "error": "Swarm already terminated"
+      }
+    },
+    {
+      "id": "hive-mind_init",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "hiveId": "hive-1784568220804-oxl8ke",
+        "topology": "hierarchical",
+        "consensus": "raft",
+        "queenId": "bench-mrthua56-queen",
+        "status": "initialized",
+        "config": {
+          "topology": "hierarchical",
+          "consensus": "raft",
+          "maxAgents": 15,
+          "persist": true,
+          "memoryBackend": "hybrid"
+        },
+        "createdAt": "2026-07-20T17:23:40.804Z"
+      }
+    },
+    {
+      "id": "hive-mind_spawn",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 102,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "spawned": 2,
+        "workers": [
+          {
+            "agentId": "bench-mrthua56-w-1784568220906-4zxu",
+            "role": "worker",
+            "joinedAt": "2026-07-20T17:23:40.906Z"
+          },
+          {
+            "agentId": "bench-mrthua56-w-1784568220906-nwxf",
+            "role": "worker",
+            "joinedAt": "2026-07-20T17:23:40.906Z"
+          }
+        ],
+        "totalWorkers": 2,
+        "hiveStatus": "active",
+        "message": "Spawned 2 worker(s) and joined them to the hive-mind"
+      }
+    },
+    {
+      "id": "hive-mind_memory:set",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 240,
+      "detail": "ok",
+      "data": {
+        "action": "set",
+        "key": "bench-mrthua56-shared",
+        "success": true,
+        "updatedAt": "2026-07-20T17:23:41.115Z"
+      }
+    },
+    {
+      "id": "hive-mind_memory:get",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 103,
+      "detail": "ok",
+      "data": {
+        "action": "get",
+        "key": "bench-mrthua56-shared",
+        "value": "hive-shared-knowledge",
+        "exists": true
+      }
+    },
+    {
+      "id": "hive-mind_consensus:propose",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 102,
+      "detail": "ok",
+      "data": {
+        "action": "propose",
+        "proposalId": "proposal-1784568221351-81fg52",
+        "type": "bench",
+        "strategy": "raft",
+        "status": "pending",
+        "required": 2,
+        "totalNodes": 2,
+        "term": 221252,
+        "timeoutAt": "2026-07-20T17:24:11.351Z"
+      }
+    },
+    {
+      "id": "hive-mind_consensus:vote",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 100,
+      "detail": "ok",
+      "data": {
+        "action": "vote",
+        "proposalId": "proposal-1784568221351-81fg52",
+        "voterId": "bench-mrthua56-queen",
+        "vote": true,
+        "strategy": "raft",
+        "votesFor": 1,
+        "votesAgainst": 0,
+        "required": 2,
+        "totalNodes": 2,
+        "resolved": false,
+        "status": "pending",
+        "term": 221252
+      }
+    },
+    {
+      "id": "hive-mind_consensus:status",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 101,
+      "detail": "ok",
+      "data": {
+        "action": "status",
+        "proposalId": "proposal-1784568221351-81fg52",
+        "type": "bench",
+        "strategy": "raft",
+        "status": "pending",
+        "votesFor": 1,
+        "votesAgainst": 0,
+        "totalVotes": 1,
+        "required": 2,
+        "totalNodes": 2,
+        "resolved": false,
+        "term": 221252,
+        "timedOut": false,
+        "timeoutAt": "2026-07-20T17:24:11.351Z"
+      }
+    },
+    {
+      "id": "hive-mind_broadcast",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 103,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "messageId": "msg-1784568221656-vg2bnd",
+        "recipients": 2,
+        "priority": "normal",
+        "broadcastAt": "2026-07-20T17:23:41.656Z"
+      }
+    },
+    {
+      "id": "hive-mind_status",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 106,
+      "detail": "ok",
+      "data": {
+        "hiveId": "hive-1784568220804",
+        "status": "active",
+        "topology": "hierarchical",
+        "consensus": "raft",
+        "queen": {
+          "id": "bench-mrthua56-queen",
+          "agentId": "bench-mrthua56-queen",
+          "status": "active",
+          "load": 0,
+          "tasksQueued": 0,
+          "electedAt": "2026-07-20T17:23:40.804Z",
+          "term": 1
+        },
+        "workers": [
+          {
+            "id": "bench-mrthua56-w-1784568220906-4zxu",
+            "type": "coder",
+            "status": "idle",
+            "currentTask": null,
+            "tasksCompleted": 0
+          },
+          {
+            "id": "bench-mrthua56-w-1784568220906-nwxf",
+            "type": "coder",
+            "status": "idle",
+            "currentTask": null,
+            "tasksCompleted": 0
+          }
+        ],
+        "metrics": {
+          "totalTasks": 0,
+          "completedTasks": 0,
+          "activeTasks": 0,
+          "pendingTasks": 0,
+          "failedTasks": 0,
+          "consensusRounds": 0,
+          "memoryUsage": "4 KB"
+        },
+        "health": {
+          "overall": "healthy",
+          "queen": "healthy",
+          "workers": "healthy",
+          "consensus": "healthy",
+          "memory": "healthy"
+        },
+        "id": "hive-1784568220804",
+        "initialized": true,
+        "workerCount": 2,
+        "pendingConsensus": 1,
+        "sharedMemoryKeys": 2,
+        "uptime": 958,
+        "createdAt": "2026-07-20T17:23:40.804Z",
+        "updatedAt": "2026-07-20T17:23:41.656Z",
+        "workerDetails": [
+          "bench-mrthua56-w-1784568220906-4zxu",
+          "bench-mrthua56-w-1784568220906-nwxf"
+        ],
+        "consensusHistory": [],
+        "sharedMemory": {
+          "bench-mrthua56-shared": "hive-shared-knowledge",
+          "broadcasts": [
+            {
+              "messageId": "msg-1784568221656-vg2bnd",
+              "message": "bench broadcast bench-mrthua56",
+              "priority": "normal",
+              "fromId": "bench-mrthua56-queen",
+              "timestamp": "2026-07-20T17:23:41.656Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hive-mind_optimize-memory",
+      "domain": "hive-mind",
+      "critical": false,
+      "ok": true,
+      "ms": 106,
+      "detail": "ok",
+      "data": {
+        "optimized": false,
+        "before": {
+          "patterns": 2,
+          "memory": "~2 keys"
+        },
+        "after": {
+          "patterns": 2,
+          "memory": "239B (~2 keys)"
+        },
+        "removed": 0,
+        "consolidated": 0,
+        "timeMs": 0,
+        "note": "structural compaction only; pattern-quality consolidation is delegated to the intelligence pipeline (#1916 follow-up)"
+      }
+    },
+    {
+      "id": "hive-mind_shutdown",
+      "domain": "hive-mind",
+      "critical": true,
+      "ok": true,
+      "ms": 106,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "shutdownAt": "2026-07-20T17:23:41.975Z",
+        "graceful": true,
+        "workersTerminated": 2,
+        "previousQueen": "bench-mrthua56-queen",
+        "consensusCleared": 1,
+        "message": "Hive-mind shutdown complete. 2 workers terminated."
+      }
+    },
+    {
+      "id": "memory_store",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 238,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "key": "bench-mrthua56-pattern",
+        "namespace": "bench-conformance",
+        "stored": true,
+        "storedAt": "2026-07-20T17:23:42.210Z",
+        "hasEmbedding": true,
+        "embeddingDimensions": 384,
+        "backend": "sql.js + HNSW",
+        "storeTime": "111.34ms"
+      }
+    },
+    {
+      "id": "memory_retrieve",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 226,
+      "detail": "ok",
+      "data": {
+        "key": "bench-mrthua56-pattern",
+        "namespace": "bench-conformance",
+        "value": "Grok host learning loop: hierarchical swarm + team bus + hive consensus pattern for multi-agent coding",
+        "tags": [],
+        "storedAt": 1784568222210,
+        "updatedAt": 1784568222210,
+        "accessCount": 1,
+        "hasEmbedding": true,
+        "found": true,
+        "backend": "sql.js + HNSW"
+      }
+    },
+    {
+      "id": "memory_search",
+      "domain": "learning",
+      "critical": false,
+      "ok": true,
+      "ms": 224,
+      "detail": "hits=1",
+      "data": {
+        "query": "multi-agent coding team bus hierarchical swarm",
+        "results": [
+          {
+            "key": "bench-mrthua56-pattern",
+            "namespace": "bench-conformance",
+            "value": "Grok host learning loop: hierarchical swarm + team bus + hiv...",
+            "similarity": 0.647655255281246
+          }
+        ],
+        "total": 1,
+        "searchTime": "97.16ms",
+        "backend": "HNSW + sql.js"
+      }
+    },
+    {
+      "id": "memory_list",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 226,
+      "detail": "ok",
+      "data": {
+        "entries": [
+          {
+            "key": "bench-mrthua56-pattern",
+            "namespace": "bench-conformance",
+            "storedAt": 1784568222210,
+            "updatedAt": 1784568222210,
+            "accessCount": 1,
+            "hasEmbedding": true,
+            "size": 102
+          }
+        ],
+        "total": 1,
+        "limit": 20,
+        "offset": 0,
+        "backend": "sql.js + HNSW"
+      }
+    },
+    {
+      "id": "memory_stats",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 229,
+      "detail": "ok",
+      "data": {
+        "initialized": true,
+        "totalEntries": 15,
+        "entriesWithEmbeddings": 12,
+        "embeddingCoverage": "80.0%",
+        "namespaces": {
+          "bench-conformance": 1,
+          "hive-memory": 4,
+          "causal-edges": 3,
+          "feedback": 3,
+          "patterns": 4
+        },
+        "backend": "sql.js + HNSW",
+        "version": "3.0.0",
+        "features": {
+          "vectorEmbeddings": true,
+          "patternLearning": true,
+          "temporalDecay": true
+        }
+      }
+    },
+    {
+      "id": "hooks_pre-task",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 240,
+      "detail": "ok",
+      "data": {
+        "taskId": "bench-mrthua56-task",
+        "description": "Implement hierarchical multi-agent coding workflow with learning",
+        "suggestedAgents": [
+          {
+            "type": "coder",
+            "confidence": 0.7,
+            "reason": "Primary agent for coder tasks based on learned patterns"
+          },
+          {
+            "type": "researcher",
+            "confidence": 0.6499999999999999,
+            "reason": "Alternative agent with researcher capabilities"
+          },
+          {
+            "type": "tester",
+            "confidence": 0.6,
+            "reason": "Alternative agent with tester capabilities"
+          }
+        ],
+        "complexity": "medium",
+        "estimatedDuration": "30-60 min",
+        "risks": [],
+        "recommendations": [
+          "Use coder as primary agent",
+          "Consider using swarm coordination"
+        ],
+        "modelRouting": {
+          "tier": 2,
+          "handler": "sonnet",
+          "model": "sonnet",
+          "complexity": 0.35181224489795915,
+          "confidence": 0.6979907432888153,
+          "estimatedLatencyMs": 2000,
+          "estimatedCost": 0.003,
+          "recommendation": "[TASK_MODEL_RECOMMENDATION] Use model=\"sonnet\" for this task"
+        },
+        "timestamp": "2026-07-20T17:23:43.357Z"
+      }
+    },
+    {
+      "id": "hooks_route",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 245,
+      "detail": "ok",
+      "data": {
+        "task": "Implement hierarchical multi-agent coding workflow with learning",
+        "routing": {
+          "method": "semantic-pure-js",
+          "backend": "pure JS (cosine similarity)",
+          "latencyMs": 0.7639170000000206,
+          "throughput": "1309 routes/s"
+        },
+        "matchedPattern": "feature-task",
+        "semanticMatches": [
+          {
+            "pattern": "feature-task",
+            "score": 0.42
+          },
+          {
+            "pattern": "performance-task",
+            "score": 0.38
+          },
+          {
+            "pattern": "memory-task",
+            "score": 0.37
+          }
+        ],
+        "primaryAgent": {
+          "type": "architect",
+          "confidence": 0.42,
+          "reason": "Semantic similarity to \"feature-task\" pattern (42%)"
+        },
+        "alternativeAgents": [
+          {
+            "type": "coder",
+            "confidence": 0.32,
+            "reason": "Alternative agent for coder capabilities"
+          },
+          {
+            "type": "tester",
+            "confidence": 0.22,
+            "reason": "Alternative agent for tester capabilities"
+          }
+        ],
+        "estimatedMetrics": {
+          "successProbability": 0.42,
+          "estimatedDuration": "30-60 min",
+          "complexity": "medium"
+        },
+        "swarmRecommendation": {
+          "topology": "hierarchical",
+          "agents": [
+            "architect",
+            "coder",
+            "tester"
+          ],
+          "coordination": "queen-led"
+        }
+      }
+    },
+    {
+      "id": "hooks_post-task",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 260,
+      "detail": "ok",
+      "data": {
+        "taskId": "bench-mrthua56-task",
+        "success": true,
+        "duration": 120,
+        "learningUpdates": {
+          "patternsUpdated": 1,
+          "newPatterns": 1,
+          "trajectoryId": "traj-1784568223830",
+          "controller": "bridge-store",
+          "outcomePersisted": false
+        },
+        "quality": 0.9,
+        "feedback": {
+          "recorded": true,
+          "controller": "bridge-store",
+          "updates": 1
+        },
+        "timestamp": "2026-07-20T17:23:43.830Z"
+      }
+    },
+    {
+      "id": "hooks_intelligence",
+      "domain": "learning",
+      "critical": true,
+      "ok": true,
+      "ms": 118,
+      "detail": "ok",
+      "data": {
+        "mode": "balanced",
+        "status": "active",
+        "components": {
+          "sona": {
+            "enabled": true,
+            "status": "active",
+            "implemented": true,
+            "trajectoriesRecorded": 0,
+            "trajectoriesSuccessful": 0,
+            "patternsLearned": 0,
+            "note": "SONA optimizer active - learning from trajectories"
+          },
+          "moe": {
+            "enabled": true,
+            "status": "active",
+            "implemented": true,
+            "routingDecisions": 0,
+            "note": "MoE router with 8 experts (coder, tester, reviewer, architect, security, performance, researcher, coordinator)"
+          },
+          "hnsw": {
+            "enabled": true,
+            "status": "active",
+            "implemented": true,
+            "indexSize": 0,
+            "memorySizeBytes": 0,
+            "note": "HNSW vector indexing with 150x-12,500x speedup"
+          },
+          "flashAttention": {
+            "enabled": true,
+            "status": "active",
+            "implemented": true,
+            "note": "Flash Attention with O(N) memory (2.49x-7.47x speedup)"
+          },
+          "ewc": {
+            "enabled": true,
+            "status": "active",
+            "implemented": true,
+            "note": "EWC++ consolidation prevents catastrophic forgetting"
+          },
+          "lora": {
+            "enabled": true,
+            "status": "active",
+            "implemented": true,
+            "note": "LoRA adapter with 128x memory compression (rank=8)"
+          },
+          "embeddings": {
+            "provider": "transformers",
+            "model": "Xenova/all-MiniLM-L6-v2",
+            "dimension": 384,
+            "implemented": true,
+            "note": "Real ONNX embeddings via Xenova/all-MiniLM-L6-v2"
+          },
+          "ruvllmCoordinator": {
+            "status": "unavailable",
+            "trajectories": 0,
+            "note": "@ruvector/ruvllm not loaded"
+          },
+          "contrastiveTrainer": {
+            "status": "unavailable",
+            "details": "unavailable",
+            "note": "@ruvector/ruvllm not loaded"
+          },
+          "trainingPipeline": {
+            "status": "js-fallback",
+            "note": "JS fallback"
+          },
+          "graphDatabase": {
+            "status": "unavailable",
+            "totalNodes": 0,
+            "totalEdges": 0,
+            "avgDegree": 0,
+            "note": "@ruvector/graph-node not loaded"
+          }
+        },
+        "realMetrics": {
+          "trajectories": {
+            "total": 0,
+            "successful": 0
+          },
+          "patterns": {
+            "learned": 0,
+            "categories": {}
+          },
+          "memory": {
+            "indexSize": 0,
+            "totalAccessCount": 0,
+            "memorySizeBytes": 0
+          },
+          "routing": {
+            "decisions": 0,
+            "avgConfidence": 0
+          }
+        },
+        "implementationStatus": {
+          "working": [
+            "memory-store",
+            "embeddings",
+            "trajectory-recording",
+            "claims",
+            "swarm-coordination",
+            "hnsw-index",
+            "pattern-storage",
+            "sona-optimizer",
+            "ewc-consolidation",
+            "moe-routing",
+            "flash-attention",
+            "lora-adapter",
+            "ruvllm-coordinator",
+            "contrastive-trainer",
+            "training-pipeline",
+            "graph-database"
+          ],
+          "partial": [],
+          "notImplemented": []
+        },
+        "version": "3.0.0-alpha.102"
+      }
+    },
+    {
+      "id": "memory_delete",
+      "domain": "learning",
+      "critical": false,
+      "ok": true,
+      "ms": 233,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "key": "bench-mrthua56-pattern",
+        "namespace": "bench-conformance",
+        "deleted": true,
+        "hnswIndexInvalidated": true,
+        "backend": "sql.js + HNSW"
+      }
+    },
+    {
+      "id": "neural_status",
+      "domain": "neural",
+      "critical": true,
+      "ok": true,
+      "ms": 517,
+      "detail": "ok",
+      "data": {
+        "_realEmbeddings": true,
+        "embeddingProvider": "@claude-flow/embeddings (ruvector@0.2.27 (bundled all-MiniLM-L6-v2))",
+        "models": {
+          "total": 3,
+          "ready": 3,
+          "training": 0,
+          "avgAccuracy": 0.6666666666666666
+        },
+        "patterns": {
+          "total": 2,
+          "byType": {
+            "classifier": 2
+          },
+          "totalEmbeddingDims": 384
+        },
+        "features": {
+          "hnsw": true,
+          "quantization": true,
+          "flashAttention": true,
+          "reasoningBank": true
+        }
+      }
+    },
+    {
+      "id": "neural_train",
+      "domain": "neural",
+      "critical": true,
+      "ok": true,
+      "ms": 715,
+      "detail": "ok",
+      "data": {
+        "success": true,
+        "_realEmbedding": true,
+        "_embeddingSource": "ruvector@0.2.27 (bundled all-MiniLM-L6-v2)",
+        "embeddingProvider": "ruvector@0.2.27 (bundled all-MiniLM-L6-v2)",
+        "modelId": "model-1784568224833-eogj",
+        "type": "classifier",
+        "status": "ready",
+        "patternsStored": 1,
+        "totalPatterns": 3,
+        "epochs": 1,
+        "trainedAt": "2026-07-20T17:23:45.440Z"
+      }
+    },
+    {
+      "id": "cli:swarm-help",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 85,
+      "detail": "help ok"
+    },
+    {
+      "id": "cli:hive-mind-help",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 85,
+      "detail": "help ok"
+    },
+    {
+      "id": "cli:neural-help",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 88,
+      "detail": "help ok"
+    },
+    {
+      "id": "cli:hooks-help",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 88,
+      "detail": "help ok"
+    },
+    {
+      "id": "cli:memory-help",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 88,
+      "detail": "help ok"
+    },
+    {
+      "id": "cli:init-grok-help",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 84,
+      "detail": "help ok"
+    },
+    {
+      "id": "cli:doctor",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 2543,
+      "detail": "exit=1"
+    },
+    {
+      "id": "cli:init-grok",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 103,
+      "detail": "scaffold → /var/folders/1r/9rdx7_456zdc5t2rc1plvw7m0000gn/T/ruflo-grok-init-bench-mrthua56"
+    },
+    {
+      "id": "cli:init-grok-home",
+      "domain": "cli",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "HOME paths materialized"
+    }
+  ]
+}

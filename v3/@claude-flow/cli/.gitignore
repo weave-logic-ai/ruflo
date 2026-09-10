@@ -1,0 +1,6 @@
+# Native ruvector / AgentDB CWD leak. The default storagePath when unset is
+# `agentdb.rvf` in this package's cwd (tests, MCP, ruvector CLI). Header-only
+# stubs and exclusive-lock sidecars are not source.
+# Do not ignore *.rvf — .claude/proven-config.signed.rvf is a shipped artifact.
+agentdb.rvf
+*.rvf.lock

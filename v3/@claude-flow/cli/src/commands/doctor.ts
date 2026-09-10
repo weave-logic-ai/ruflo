@@ -2059,8 +2059,11 @@ async function checkMetaharnessDeclaredPackages(): Promise<HealthCheck> {
 
 async function checkMetaharness(): Promise<HealthCheck> {
   try {
-    const version = await runCommand('npx -y metaharness@latest --version 2>&1', 15000);
-    // metaharness emits multi-line stdout; parse a version-shaped line.
+    // metaharness's own CLI has no --version/-v/-V flag — it prints usage
+    // text for all three, so there is never a semver in that output to
+    // parse. Query the registry directly instead; it also still proves
+    // the upstream package is reachable, which is this check's purpose.
+    const version = await runCommand('npm view metaharness version', 15000);
     const versionMatch = version.match(/(\d+\.\d+\.\d+)/);
     if (!versionMatch) {
       return {
