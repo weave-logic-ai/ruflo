@@ -1,0 +1,202 @@
+{
+  "id": "probe-mukbtyzh",
+  "when": "2026-09-27T21:25:03.328Z",
+  "live": true,
+  "pass": 24,
+  "fail": 0,
+  "warn": 0,
+  "results": [
+    {
+      "id": "inspect:version",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 219,
+      "detail": "1.0.41"
+    },
+    {
+      "id": "inspect:trusted",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "folder trusted"
+    },
+    {
+      "id": "inspect:rules",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/rules/ruflo-grok.md"
+    },
+    {
+      "id": "inspect:agent:ruflo-architect",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-architect.md"
+    },
+    {
+      "id": "inspect:agent:ruflo-coder",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-coder.md"
+    },
+    {
+      "id": "inspect:agent:ruflo-tester",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-tester.md"
+    },
+    {
+      "id": "inspect:agent:ruflo-reviewer",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-reviewer.md"
+    },
+    {
+      "id": "inspect:skill:agent-teams-grok",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/skills/agent-teams-grok/SKILL.md"
+    },
+    {
+      "id": "inspect:skill:handoff",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/skills/handoff/SKILL.md"
+    },
+    {
+      "id": "inspect:hook:subagent-stop",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "node \"$CLAUDE_PROJECT_DIR/scripts/grok-subagent-stop-hook.mjs\""
+    },
+    {
+      "id": "inspect:hook:user_prompt_submit",
+      "domain": "discover",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "claude compat hook loaded (not yet executed)"
+    },
+    {
+      "id": "inspect:hook:pre_tool_use",
+      "domain": "discover",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "claude compat hook loaded (not yet executed)"
+    },
+    {
+      "id": "inspect:hook:post_tool_use",
+      "domain": "discover",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "claude compat hook loaded (not yet executed)"
+    },
+    {
+      "id": "inspect:hook:session_start",
+      "domain": "discover",
+      "critical": false,
+      "ok": true,
+      "ms": 0,
+      "detail": "claude compat hook loaded (not yet executed)"
+    },
+    {
+      "id": "inspect:mcp:ruflo",
+      "domain": "discover",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "node via /Users/mathewbeane/.grok/config.toml"
+    },
+    {
+      "id": "doctor:handshake",
+      "domain": "connect",
+      "critical": true,
+      "ok": true,
+      "ms": 250,
+      "detail": "node /Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js mcp start; 362 tools discovered"
+    },
+    {
+      "id": "server-tool:team_create",
+      "domain": "connect",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "on the server Grok starts"
+    },
+    {
+      "id": "server-tool:memory_store",
+      "domain": "connect",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "on the server Grok starts"
+    },
+    {
+      "id": "server-tool:memory_retrieve",
+      "domain": "connect",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "on the server Grok starts"
+    },
+    {
+      "id": "server-tool:hooks_route",
+      "domain": "connect",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "on the server Grok starts"
+    },
+    {
+      "id": "server-tool:swarm_init",
+      "domain": "connect",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "on the server Grok starts"
+    },
+    {
+      "id": "server-tool:neural_status",
+      "domain": "connect",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "on the server Grok starts"
+    },
+    {
+      "id": "hook:session-start",
+      "domain": "execute",
+      "critical": true,
+      "ok": true,
+      "ms": 24850,
+      "detail": "SessionStart hook wrote a receipt"
+    },
+    {
+      "id": "live:memory-roundtrip",
+      "domain": "execute",
+      "critical": true,
+      "ok": true,
+      "ms": 0,
+      "detail": "I'll look up the Ruflo memory tools, then store and retrieve the probe value.The store landed. I'll retrieve the same key again.PROBE_OK probe-ok"
+    }
+  ]
+}

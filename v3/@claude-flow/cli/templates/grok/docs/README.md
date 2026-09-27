@@ -114,6 +114,19 @@ Permission allows in the scaffold use Grok's native forms, `Bash(...)` and `MCPT
 
 `UserPromptSubmit` hooks that allow the prompt do not inject stdout into the model on 1.0.41. If a route hook seems to vanish, read `.swarm/route-latest.md` or call the route tool. That is a host limit, not a missing Ruflo file.
 
+## Prove it
+
+From a Ruflo checkout (these scripts are not copied by `init --grok`):
+
+```bash
+node scripts/bench-grok-host-conformance.mjs
+node scripts/probe-host-live.mjs --host grok
+node scripts/probe-host-live.mjs --host all --no-execute
+node scripts/probe-host-live.mjs --host grok --live
+```
+
+The first never starts a host. The second is one contract (discover, connect, SessionStart receipt, optional memory round trip) with a Grok, Claude, or Codex adapter. A check that CLI cannot answer is a skip, not a pass.
+
 ## When Grok updates
 
 The July 2026 host work assumed Grok 1.0.34 and a spawn schema that accepted `subagent_type` and `capability_mode`. 1.0.41 dropped both from the model-facing tool and stopped applying `[subagents]` from project config. The same class of drift will happen again.

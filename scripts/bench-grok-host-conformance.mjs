@@ -2,8 +2,10 @@
 /**
  * bench-grok-host-conformance.mjs — ADR-320 Phase 4 host conformance bench
  *
- * Proves Ruflo's host-agnostic surface works under Grok Build the same way
- * Claude Code would use it: MCP tools + CLI + Grok host artifacts.
+ * Proves the Ruflo CLI surface the Grok host is supposed to call: MCP tools,
+ * CLI, and that the Grok artifact files exist. It does not start Grok.
+ * For what the Grok binary actually loads and runs, use
+ * scripts/probe-host-live.mjs (--host grok|claude|codex|all).
  *
  * Coverage domains (grounded in RuvNet Brain ruflo primer + MCP tool groups):
  *   1. Host surface      — .grok/ config, rules, agents, skills, team bus
