@@ -290,7 +290,7 @@ export const teamTools: MCPTool[] = [
   {
     name: 'team_spawn',
     description:
-      'Register a teammate and return a host spawn plan (Grok spawn_subagent / Claude Task adapter). Does not execute the agent — the host lead must spawn using the plan.',
+      'Register a teammate and return a host spawn plan (Grok spawn_subagent / Claude Task adapter) — does not execute the agent. Use when native Task has no way to register a teammate into the host-agnostic team roster (ADR-320); the host lead still spawns using the returned plan. Pair with team_create first.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -345,7 +345,7 @@ export const teamTools: MCPTool[] = [
   {
     name: 'team_send',
     description:
-      'Enqueue a message to a named agent mailbox (or broadcast with to="*"). Host-agnostic replacement for Claude SendMessage.',
+      'Enqueue a message to a named agent mailbox (or broadcast with to="*"). Use when native SendMessage is wrong because the recipient may be on a different host (Grok, Codex) with no SendMessage equivalent — the message persists under .claude-flow/teams/ instead of an in-memory channel. Pair with team_inbox to read it.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -410,7 +410,7 @@ export const teamTools: MCPTool[] = [
   {
     name: 'team_inbox',
     description:
-      'Drain (default) or peek an agent mailbox. Messages archive under mailbox/<agent>/archive when drained.',
+      'Drain (default) or peek an agent mailbox. Messages archive under mailbox/<agent>/archive when drained. Use when native SendMessage is wrong because there is no host-agnostic inbox to read from — this is the Grok/Codex-side counterpart to team_send for hosts without a live message channel.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -451,7 +451,7 @@ export const teamTools: MCPTool[] = [
   },
   {
     name: 'team_broadcast',
-    description: 'Fan-out a message to all registered team members (alias of team_send with to="*").',
+    description: 'Fan-out a message to all registered team members (alias of team_send with to="*"). Use when native SendMessage is wrong because it can\'t reach every teammate on a non-Claude host in one call; each recipient reads back via team_inbox on its own host.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -479,7 +479,7 @@ export const teamTools: MCPTool[] = [
   },
   {
     name: 'team_plan',
-    description: 'Set pipeline steps for a team (ordered agents). First step becomes ready.',
+    description: 'Set pipeline steps for a team (ordered agents); the first step becomes ready. Use when native TodoWrite is wrong because it can\'t drive multi-host agent sequencing — this pipeline advances via team_on_stop instead of a single host\'s task list.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -529,7 +529,7 @@ export const teamTools: MCPTool[] = [
   },
   {
     name: 'team_status',
-    description: 'Team members, plan progress, and pending mailbox counts.',
+    description: 'Team members, plan progress, and pending mailbox counts. Use when native Task is wrong because it has no cross-host visibility into a team\'s roster or pipeline state — reads the same .claude-flow/teams/ state that team_plan and team_send write.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -562,7 +562,7 @@ export const teamTools: MCPTool[] = [
   {
     name: 'team_on_stop',
     description:
-      'Mark agent idle, advance plan, return next assignment hint. Wire from SubagentStop / post-task hooks.',
+      'Mark agent idle, advance the team_plan pipeline, and return the next assignment hint. Use when native Task has no cross-host equivalent to SubagentStop-driven pipeline advancement; wire this from SubagentStop / post-task hooks instead of polling team_status.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -612,7 +612,7 @@ export const teamTools: MCPTool[] = [
   },
   {
     name: 'team_shutdown',
-    description: 'Graceful team teardown — marks team and members shutdown.',
+    description: 'Graceful team teardown — marks team and members shutdown. Use when native Task is wrong because it has no host-agnostic team lifecycle to close out; call this instead of leaving mailbox/plan state orphaned after a multi-host run.',
     category: 'team',
     inputSchema: {
       type: 'object',

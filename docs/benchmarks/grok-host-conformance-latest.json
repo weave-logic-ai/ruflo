@@ -1,10 +1,10 @@
 {
-  "id": "bench-muk9plf6",
+  "id": "bench-muk9sko6",
   "title": "Grok host conformance bench (ADR-320 Phase 4)",
   "host": "grok",
   "cli": "/Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js",
   "repo": "/Users/mathewbeane/dev/ruflo",
-  "timestamp": "2026-09-27T20:25:26.310Z",
+  "timestamp": "2026-09-27T20:27:43.850Z",
   "summary": {
     "total": 93,
     "pass": 92,
@@ -205,7 +205,7 @@
       "domain": "inventory",
       "critical": true,
       "ok": true,
-      "ms": 129,
+      "ms": 202,
       "detail": "340 tools listed"
     },
     {
@@ -421,18 +421,18 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 138,
+      "ms": 131,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "create",
         "team": {
-          "id": "bench-muk9plf6-team",
-          "name": "bench-muk9plf6-team",
+          "id": "bench-muk9sko6-team",
+          "name": "bench-muk9sko6-team",
           "topology": "hierarchical",
           "maxAgents": 4,
           "status": "active",
-          "createdAt": "2026-09-27T20:25:14.680Z",
+          "createdAt": "2026-09-27T20:27:33.745Z",
           "host": "grok",
           "members": {},
           "plan": {
@@ -447,7 +447,7 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 139,
+      "ms": 131,
       "detail": "ok",
       "data": {
         "success": true,
@@ -476,7 +476,7 @@
             }
           ],
           "index": 0,
-          "updatedAt": "2026-09-27T20:25:14.821Z"
+          "updatedAt": "2026-09-27T20:27:33.876Z"
         }
       }
     },
@@ -485,16 +485,16 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 143,
+      "ms": 135,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "spawn",
         "spawnPlan": {
-          "teamId": "bench-muk9plf6-team",
+          "teamId": "bench-muk9sko6-team",
           "name": "architect",
           "role": "architect",
-          "prompt": "You are \"architect\" (role: architect) on team \"bench-muk9plf6-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-muk9plf6-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-muk9plf6-team.\nPrimary next agent(s): developer\nCheck inbox at start via team_inbox (team=bench-muk9plf6-team, agent=architect).\n\nTask:\nDesign for conformance bench",
+          "prompt": "You are \"architect\" (role: architect) on team \"bench-muk9sko6-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-muk9sko6-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-muk9sko6-team.\nPrimary next agent(s): developer\nCheck inbox at start via team_inbox (team=bench-muk9sko6-team, agent=architect).\n\nTask:\nDesign for conformance bench",
           "next": [
             "developer"
           ],
@@ -512,7 +512,7 @@
             }
           }
         },
-        "teamId": "bench-muk9plf6-team"
+        "teamId": "bench-muk9sko6-team"
       }
     },
     {
@@ -520,21 +520,21 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 138,
+      "ms": 143,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "send",
         "message": {
-          "id": "msg_1790540715102_02shf9",
-          "teamId": "bench-muk9plf6-team",
+          "id": "msg_1790540854154_ouk33g",
+          "teamId": "bench-muk9sko6-team",
           "from": "architect",
           "to": "developer",
           "summary": "design",
           "content": "Layered architecture for bench",
           "type": "handoff",
           "priority": 2,
-          "timestamp": "2026-09-27T20:25:15.102Z"
+          "timestamp": "2026-09-27T20:27:34.154Z"
         }
       }
     },
@@ -543,25 +543,25 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 144,
+      "ms": 141,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "status",
         "team": {
-          "id": "bench-muk9plf6-team",
-          "name": "bench-muk9plf6-team",
+          "id": "bench-muk9sko6-team",
+          "name": "bench-muk9sko6-team",
           "topology": "hierarchical",
           "maxAgents": 4,
           "status": "active",
-          "createdAt": "2026-09-27T20:25:14.680Z",
+          "createdAt": "2026-09-27T20:27:33.745Z",
           "host": "grok",
           "members": {
             "architect": {
               "name": "architect",
               "role": "architect",
               "status": "registered",
-              "registeredAt": "2026-09-27T20:25:14.964Z",
+              "registeredAt": "2026-09-27T20:27:34.009Z",
               "next": [
                 "developer"
               ],
@@ -604,12 +604,12 @@
               }
             ],
             "index": 0,
-            "updatedAt": "2026-09-27T20:25:14.821Z"
+            "updatedAt": "2026-09-27T20:27:33.876Z"
           }
         },
         "pendingMail": {
-          "architect": 6,
-          "developer": 14
+          "architect": 7,
+          "developer": 16
         }
       }
     },
@@ -618,16 +618,16 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 144,
+      "ms": 136,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "spawn",
         "spawnPlan": {
-          "teamId": "bench-muk9plf6-team",
+          "teamId": "bench-muk9sko6-team",
           "name": "developer",
           "role": "developer",
-          "prompt": "You are \"developer\" (role: developer) on team \"bench-muk9plf6-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-muk9plf6-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-muk9plf6-team.\nPrimary next agent(s): tester\nCheck inbox at start via team_inbox (team=bench-muk9plf6-team, agent=developer).\n\nTask:\nImplement design",
+          "prompt": "You are \"developer\" (role: developer) on team \"bench-muk9sko6-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-muk9sko6-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-muk9sko6-team.\nPrimary next agent(s): tester\nCheck inbox at start via team_inbox (team=bench-muk9sko6-team, agent=developer).\n\nTask:\nImplement design",
           "next": [
             "tester"
           ],
@@ -645,7 +645,7 @@
             }
           }
         },
-        "teamId": "bench-muk9plf6-team"
+        "teamId": "bench-muk9sko6-team"
       }
     },
     {
@@ -653,7 +653,7 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 137,
+      "ms": 131,
       "detail": "ok",
       "data": {
         "success": true,
@@ -813,6 +813,28 @@
             "type": "handoff",
             "priority": 2,
             "timestamp": "2026-09-27T20:25:15.102Z"
+          },
+          {
+            "id": "msg_1790540715672_5zxxxy",
+            "teamId": "bench-muk9plf6-team",
+            "from": "lead",
+            "to": "*",
+            "summary": "sync",
+            "content": "bench broadcast to members",
+            "type": "broadcast",
+            "priority": 2,
+            "timestamp": "2026-09-27T20:25:15.672Z"
+          },
+          {
+            "id": "msg_1790540854154_ouk33g",
+            "teamId": "bench-muk9sko6-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-09-27T20:27:34.154Z"
           }
         ],
         "peek": true
@@ -823,21 +845,21 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 144,
+      "ms": 126,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "send",
         "message": {
-          "id": "msg_1790540715672_5zxxxy",
-          "teamId": "bench-muk9plf6-team",
+          "id": "msg_1790540854689_wk5uzw",
+          "teamId": "bench-muk9sko6-team",
           "from": "lead",
           "to": "*",
           "summary": "sync",
           "content": "bench broadcast to members",
           "type": "broadcast",
           "priority": 2,
-          "timestamp": "2026-09-27T20:25:15.672Z"
+          "timestamp": "2026-09-27T20:27:34.689Z"
         }
       }
     },
@@ -846,7 +868,7 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 227,
+      "ms": 125,
       "detail": "ok",
       "data": {
         "success": true,
@@ -868,12 +890,12 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 187,
+      "ms": 127,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "shutdown",
-        "teamId": "bench-muk9plf6-team"
+        "teamId": "bench-muk9sko6-team"
       }
     },
     {
@@ -881,15 +903,15 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 180,
+      "ms": 126,
       "detail": "ok",
       "data": {
         "success": true,
-        "swarmId": "swarm-1790540716267-ci7eek",
+        "swarmId": "swarm-1790540855068-n1xx25",
         "topology": "hierarchical",
         "strategy": "specialized",
         "maxAgents": 6,
-        "initializedAt": "2026-09-27T20:25:16.267Z",
+        "initializedAt": "2026-09-27T20:27:35.068Z",
         "config": {
           "topology": "hierarchical",
           "maxAgents": 6,
@@ -906,10 +928,10 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 165,
+      "ms": 133,
       "detail": "ok",
       "data": {
-        "swarmId": "swarm-1790540716267-ci7eek",
+        "swarmId": "swarm-1790540855068-n1xx25",
         "status": "running",
         "topology": "hierarchical",
         "maxAgents": 6,
@@ -923,8 +945,8 @@
           "autoScaling": true,
           "consensusMechanism": "majority"
         },
-        "createdAt": "2026-09-27T20:25:16.267Z",
-        "updatedAt": "2026-09-27T20:25:16.267Z"
+        "createdAt": "2026-09-27T20:27:35.068Z",
+        "updatedAt": "2026-09-27T20:27:35.068Z"
       }
     },
     {
@@ -932,12 +954,12 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 145,
+      "ms": 129,
       "detail": "ok",
       "data": {
         "status": "healthy",
         "healthy": true,
-        "swarmId": "swarm-1790540716267-ci7eek",
+        "swarmId": "swarm-1790540855068-n1xx25",
         "topology": "hierarchical",
         "agentCount": 0,
         "checks": [
@@ -962,7 +984,7 @@
             "message": "Topology: hierarchical"
           }
         ],
-        "checkedAt": "2026-09-27T20:25:16.578Z"
+        "checkedAt": "2026-09-27T20:27:35.329Z"
       }
     },
     {
@@ -970,16 +992,16 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 170,
+      "ms": 171,
       "detail": "ok",
       "data": {
         "success": true,
-        "agentId": "bench-muk9plf6-coder",
+        "agentId": "bench-muk9sko6-coder",
         "agentType": "coder",
         "model": "sonnet",
         "modelRoutedBy": "default",
         "status": "registered",
-        "createdAt": "2026-09-27T20:25:16.717Z",
+        "createdAt": "2026-09-27T20:27:35.458Z",
         "note": "Agent registered for coordination. Three execution paths: (1) call agent_execute(agentId, prompt) — direct LLM call via Anthropic Messages API (requires ANTHROPIC_API_KEY); (2) Claude Code Task tool — spawns a real subagent; (3) claude -p — headless background instance."
       }
     },
@@ -988,15 +1010,15 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 140,
+      "ms": 130,
       "detail": "ok",
       "data": {
-        "agentId": "bench-muk9plf6-coder",
+        "agentId": "bench-muk9sko6-coder",
         "agentType": "coder",
         "status": "idle",
         "health": 1,
         "taskCount": 0,
-        "createdAt": "2026-09-27T20:25:16.717Z",
+        "createdAt": "2026-09-27T20:27:35.458Z",
         "lastResult": null
       }
     },
@@ -1005,7 +1027,7 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 180,
+      "ms": 136,
       "detail": "ok",
       "data": {
         "agents": [
@@ -1018,12 +1040,12 @@
             "createdAt": "2026-07-20T17:19:37.215Z"
           },
           {
-            "agentId": "bench-muk9plf6-coder",
+            "agentId": "bench-muk9sko6-coder",
             "agentType": "coder",
             "status": "idle",
             "health": 1,
             "taskCount": 0,
-            "createdAt": "2026-09-27T20:25:16.717Z"
+            "createdAt": "2026-09-27T20:27:35.458Z"
           }
         ],
         "total": 2,
@@ -1035,15 +1057,15 @@
       "domain": "swarm",
       "critical": false,
       "ok": true,
-      "ms": 153,
+      "ms": 126,
       "detail": "ok",
       "data": {
-        "agentId": "bench-muk9plf6-coder",
+        "agentId": "bench-muk9sko6-coder",
         "health": 1,
         "status": "idle",
         "healthy": true,
         "taskCount": 0,
-        "uptime": 506
+        "uptime": 435
       }
     },
     {
@@ -1051,13 +1073,13 @@
       "domain": "swarm",
       "critical": false,
       "ok": true,
-      "ms": 161,
+      "ms": 130,
       "detail": "ok",
       "data": {
         "success": true,
-        "agentId": "bench-muk9plf6-coder",
+        "agentId": "bench-muk9sko6-coder",
         "terminated": true,
-        "terminatedAt": "2026-09-27T20:25:17.383Z"
+        "terminatedAt": "2026-09-27T20:27:36.023Z"
       }
     },
     {
@@ -1065,15 +1087,15 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 160,
+      "ms": 129,
       "detail": "ok",
       "data": {
         "success": true,
-        "swarmId": "swarm-1790540716267-ci7eek",
+        "swarmId": "swarm-1790540855068-n1xx25",
         "terminated": true,
         "graceful": true,
         "agentsTerminated": 1,
-        "terminatedAt": "2026-09-27T20:25:17.542Z"
+        "terminatedAt": "2026-09-27T20:27:36.151Z"
       }
     },
     {
@@ -1081,14 +1103,14 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 144,
+      "ms": 128,
       "detail": "ok",
       "data": {
         "success": true,
-        "hiveId": "hive-1790540717830-8pvzch",
+        "hiveId": "hive-1790540856405-3423r2",
         "topology": "hierarchical",
         "consensus": "raft",
-        "queenId": "bench-muk9plf6-queen",
+        "queenId": "bench-muk9sko6-queen",
         "status": "initialized",
         "hiveToken": "69fa4e6ff76a2d4a944b8d04683c10df7c6decd1d2cbf0541e6689f9738558d3",
         "config": {
@@ -1098,7 +1120,7 @@
           "persist": true,
           "memoryBackend": "hybrid"
         },
-        "createdAt": "2026-09-27T20:25:17.830Z"
+        "createdAt": "2026-09-27T20:27:36.405Z"
       }
     },
     {
@@ -1106,21 +1128,21 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 160,
+      "ms": 131,
       "detail": "ok",
       "data": {
         "success": true,
         "spawned": 2,
         "workers": [
           {
-            "agentId": "bench-muk9plf6-w-1790540717994-wm2b",
+            "agentId": "bench-muk9sko6-w-1790540856536-ysfm",
             "role": "worker",
-            "joinedAt": "2026-09-27T20:25:17.994Z"
+            "joinedAt": "2026-09-27T20:27:36.536Z"
           },
           {
-            "agentId": "bench-muk9plf6-w-1790540717994-hcld",
+            "agentId": "bench-muk9sko6-w-1790540856536-3ewd",
             "role": "worker",
-            "joinedAt": "2026-09-27T20:25:17.994Z"
+            "joinedAt": "2026-09-27T20:27:36.536Z"
           }
         ],
         "totalWorkers": 2,
@@ -1133,13 +1155,13 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 329,
+      "ms": 348,
       "detail": "ok",
       "data": {
         "action": "set",
-        "key": "bench-muk9plf6-shared",
+        "key": "bench-muk9sko6-shared",
         "success": true,
-        "updatedAt": "2026-09-27T20:25:18.319Z"
+        "updatedAt": "2026-09-27T20:27:36.881Z"
       }
     },
     {
@@ -1147,11 +1169,11 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 176,
+      "ms": 126,
       "detail": "ok",
       "data": {
         "action": "get",
-        "key": "bench-muk9plf6-shared",
+        "key": "bench-muk9sko6-shared",
         "value": "hive-shared-knowledge",
         "exists": true
       }
@@ -1161,18 +1183,18 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 156,
+      "ms": 139,
       "detail": "ok",
       "data": {
         "action": "propose",
-        "proposalId": "proposal-1790540718654-dy5hso",
+        "proposalId": "proposal-1790540857148-7xxam0",
         "type": "bench",
         "strategy": "raft",
         "status": "pending",
         "required": 2,
         "totalNodes": 2,
-        "term": 718503,
-        "timeoutAt": "2026-09-27T20:25:48.654Z"
+        "term": 857015,
+        "timeoutAt": "2026-09-27T20:28:07.148Z"
       }
     },
     {
@@ -1180,12 +1202,12 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 150,
+      "ms": 140,
       "detail": "ok",
       "data": {
         "action": "vote",
-        "proposalId": "proposal-1790540718654-dy5hso",
-        "voterId": "bench-muk9plf6-w-1790540717994-wm2b",
+        "proposalId": "proposal-1790540857148-7xxam0",
+        "voterId": "bench-muk9sko6-w-1790540856536-ysfm",
         "vote": true,
         "strategy": "raft",
         "votesFor": 1,
@@ -1194,7 +1216,7 @@
         "totalNodes": 2,
         "resolved": false,
         "status": "pending",
-        "term": 718503
+        "term": 857015
       }
     },
     {
@@ -1202,11 +1224,11 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 144,
+      "ms": 160,
       "detail": "ok",
       "data": {
         "action": "status",
-        "proposalId": "proposal-1790540718654-dy5hso",
+        "proposalId": "proposal-1790540857148-7xxam0",
         "type": "bench",
         "strategy": "raft",
         "status": "pending",
@@ -1216,9 +1238,9 @@
         "required": 2,
         "totalNodes": 2,
         "resolved": false,
-        "term": 718503,
+        "term": 857015,
         "timedOut": false,
-        "timeoutAt": "2026-09-27T20:25:48.654Z"
+        "timeoutAt": "2026-09-27T20:28:07.148Z"
       }
     },
     {
@@ -1226,14 +1248,14 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 142,
+      "ms": 147,
       "detail": "ok",
       "data": {
         "success": true,
-        "messageId": "msg-1790540719090-lyowz8",
+        "messageId": "msg-1790540857595-1znj2c",
         "recipients": 2,
         "priority": "normal",
-        "broadcastAt": "2026-09-27T20:25:19.090Z"
+        "broadcastAt": "2026-09-27T20:27:37.595Z"
       }
     },
     {
@@ -1241,32 +1263,32 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 161,
+      "ms": 142,
       "detail": "ok",
       "data": {
-        "hiveId": "hive-1790540717830",
+        "hiveId": "hive-1790540856405",
         "status": "active",
         "topology": "hierarchical",
         "consensus": "raft",
         "queen": {
-          "id": "bench-muk9plf6-queen",
-          "agentId": "bench-muk9plf6-queen",
+          "id": "bench-muk9sko6-queen",
+          "agentId": "bench-muk9sko6-queen",
           "status": "active",
           "load": 0,
           "tasksQueued": 0,
-          "electedAt": "2026-09-27T20:25:17.830Z",
+          "electedAt": "2026-09-27T20:27:36.405Z",
           "term": 1
         },
         "workers": [
           {
-            "id": "bench-muk9plf6-w-1790540717994-wm2b",
+            "id": "bench-muk9sko6-w-1790540856536-ysfm",
             "type": "coder",
             "status": "idle",
             "currentTask": null,
             "tasksCompleted": 0
           },
           {
-            "id": "bench-muk9plf6-w-1790540717994-hcld",
+            "id": "bench-muk9sko6-w-1790540856536-3ewd",
             "type": "coder",
             "status": "idle",
             "currentTask": null,
@@ -1289,28 +1311,28 @@
           "consensus": "healthy",
           "memory": "healthy"
         },
-        "id": "hive-1790540717830",
+        "id": "hive-1790540856405",
         "initialized": true,
         "workerCount": 2,
         "pendingConsensus": 1,
         "sharedMemoryKeys": 2,
-        "uptime": 1420,
-        "createdAt": "2026-09-27T20:25:17.830Z",
-        "updatedAt": "2026-09-27T20:25:19.090Z",
+        "uptime": 1333,
+        "createdAt": "2026-09-27T20:27:36.405Z",
+        "updatedAt": "2026-09-27T20:27:37.595Z",
         "workerDetails": [
-          "bench-muk9plf6-w-1790540717994-wm2b",
-          "bench-muk9plf6-w-1790540717994-hcld"
+          "bench-muk9sko6-w-1790540856536-ysfm",
+          "bench-muk9sko6-w-1790540856536-3ewd"
         ],
         "consensusHistory": [],
         "sharedMemory": {
-          "bench-muk9plf6-shared": "hive-shared-knowledge",
+          "bench-muk9sko6-shared": "hive-shared-knowledge",
           "broadcasts": [
             {
-              "messageId": "msg-1790540719090-lyowz8",
-              "message": "bench broadcast bench-muk9plf6",
+              "messageId": "msg-1790540857595-1znj2c",
+              "message": "bench broadcast bench-muk9sko6",
               "priority": "normal",
-              "fromId": "bench-muk9plf6-queen",
-              "timestamp": "2026-09-27T20:25:19.090Z"
+              "fromId": "bench-muk9sko6-queen",
+              "timestamp": "2026-09-27T20:27:37.595Z"
             }
           ]
         }
@@ -1321,7 +1343,7 @@
       "domain": "hive-mind",
       "critical": false,
       "ok": true,
-      "ms": 146,
+      "ms": 128,
       "detail": "ok",
       "data": {
         "optimized": false,
@@ -1344,14 +1366,14 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 150,
+      "ms": 126,
       "detail": "ok",
       "data": {
         "success": true,
-        "shutdownAt": "2026-09-27T20:25:19.546Z",
+        "shutdownAt": "2026-09-27T20:27:37.994Z",
         "graceful": true,
         "workersTerminated": 2,
-        "previousQueen": "bench-muk9plf6-queen",
+        "previousQueen": "bench-muk9sko6-queen",
         "consensusCleared": 1,
         "message": "Hive-mind shutdown complete. 2 workers terminated."
       }
@@ -1361,19 +1383,19 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 317,
+      "ms": 271,
       "detail": "ok",
       "data": {
         "success": true,
-        "key": "bench-muk9plf6-pattern",
+        "key": "bench-muk9sko6-pattern",
         "namespace": "bench-conformance",
         "stored": true,
-        "storedAt": "2026-09-27T20:25:19.864Z",
+        "storedAt": "2026-09-27T20:27:38.264Z",
         "hasEmbedding": true,
         "embeddingDimensions": 384,
         "provenanceType": "unknown",
         "backend": "sqlite (bridge, brute-force cosine)",
-        "storeTime": "149.49ms"
+        "storeTime": "128.61ms"
       }
     },
     {
@@ -1381,10 +1403,10 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 314,
+      "ms": 277,
       "detail": "ok",
       "data": {
-        "key": "bench-muk9plf6-pattern",
+        "key": "bench-muk9sko6-pattern",
         "namespace": "bench-conformance",
         "value": "Grok host learning loop: hierarchical swarm + team bus + hive consensus pattern for multi-agent coding",
         "tags": [
@@ -1392,8 +1414,8 @@
           "grok",
           "learning"
         ],
-        "storedAt": 1790540719847,
-        "updatedAt": 1790540719863,
+        "storedAt": 1790540858251,
+        "updatedAt": 1790540858264,
         "accessCount": 1,
         "hasEmbedding": true,
         "found": true,
@@ -1405,13 +1427,13 @@
       "domain": "learning",
       "critical": false,
       "ok": true,
-      "ms": 286,
+      "ms": 269,
       "detail": "hits=1",
       "data": {
         "query": "multi-agent coding team bus hierarchical swarm",
         "results": [
           {
-            "key": "bench-muk9plf6-pattern",
+            "key": "bench-muk9sko6-pattern",
             "namespace": "bench-conformance",
             "value": "Grok host learning loop: hierarchical swarm + team bus + hiv...",
             "similarity": 0.647655255281246,
@@ -1419,7 +1441,7 @@
           }
         ],
         "total": 1,
-        "searchTime": "127.87ms",
+        "searchTime": "122.86ms",
         "backend": "HNSW + sql.js"
       }
     },
@@ -1428,20 +1450,20 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 295,
+      "ms": 274,
       "detail": "ok",
       "data": {
         "entries": [
           {
-            "key": "bench-muk9plf6-pattern",
+            "key": "bench-muk9sko6-pattern",
             "namespace": "bench-conformance",
             "tags": [
               "bench",
               "grok",
               "learning"
             ],
-            "storedAt": 1790540719847,
-            "updatedAt": 1790540719863,
+            "storedAt": 1790540858251,
+            "updatedAt": 1790540858264,
             "accessCount": 1,
             "hasEmbedding": true,
             "size": 102
@@ -1458,20 +1480,20 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 319,
+      "ms": 342,
       "detail": "ok",
       "data": {
         "initialized": true,
-        "totalEntries": 21,
-        "entriesCounted": 21,
-        "entriesWithEmbeddings": 18,
-        "embeddingCoverage": "85.7%",
+        "totalEntries": 25,
+        "entriesCounted": 25,
+        "entriesWithEmbeddings": 21,
+        "embeddingCoverage": "84.0%",
         "namespaces": {
           "bench-conformance": 1,
-          "hive-memory": 4,
-          "causal-edges": 3,
-          "feedback": 3,
-          "default": 2,
+          "hive-memory": 5,
+          "default": 3,
+          "causal-edges": 4,
+          "feedback": 4,
           "commands": 8
         },
         "backend": "sqlite (bridge, brute-force cosine)",
@@ -1488,10 +1510,10 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 294,
+      "ms": 259,
       "detail": "ok",
       "data": {
-        "taskId": "bench-muk9plf6-task",
+        "taskId": "bench-muk9sko6-task",
         "description": "Implement hierarchical multi-agent coding workflow with learning",
         "suggestedAgents": [
           {
@@ -1522,12 +1544,12 @@
           "handler": "sonnet",
           "model": "sonnet",
           "complexity": 0.35181224489795915,
-          "confidence": 0.7116621717318984,
+          "confidence": 0.5195782894495208,
           "estimatedLatencyMs": 2000,
           "estimatedCost": 0.003,
           "recommendation": "[TASK_MODEL_RECOMMENDATION] Use model=\"sonnet\" for this task"
         },
-        "timestamp": "2026-09-27T20:25:21.375Z"
+        "timestamp": "2026-09-27T20:27:39.688Z"
       }
     },
     {
@@ -1535,15 +1557,15 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 612,
+      "ms": 582,
       "detail": "ok",
       "data": {
         "task": "Implement hierarchical multi-agent coding workflow with learning",
         "routing": {
           "method": "semantic-native",
           "backend": "native VectorDb (HNSW)",
-          "latencyMs": 0.11166599999990012,
-          "throughput": "8955 routes/s"
+          "latencyMs": 0.0975420000000895,
+          "throughput": "10252 routes/s"
         },
         "matchedPattern": "feature-task",
         "semanticMatches": [
@@ -1599,12 +1621,12 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 369,
+      "ms": 281,
       "detail": "ok",
       "data": {
-        "taskId": "bench-muk9plf6-task",
+        "taskId": "bench-muk9sko6-task",
         "success": true,
-        "duration": 203,
+        "duration": 154,
         "learningUpdates": {
           "patternsUpdated": 2,
           "newPatterns": null,
@@ -1622,7 +1644,7 @@
           "controller": "intelligence+bridge-store",
           "updates": 2
         },
-        "timestamp": "2026-09-27T20:25:22.355Z"
+        "timestamp": "2026-09-27T20:27:40.549Z"
       }
     },
     {
@@ -1630,7 +1652,7 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 251,
+      "ms": 220,
       "detail": "ok",
       "data": {
         "training": {
@@ -1767,11 +1789,11 @@
       "domain": "learning",
       "critical": false,
       "ok": true,
-      "ms": 369,
+      "ms": 297,
       "detail": "ok",
       "data": {
         "success": true,
-        "key": "bench-muk9plf6-pattern",
+        "key": "bench-muk9sko6-pattern",
         "namespace": "bench-conformance",
         "deleted": true,
         "hnswIndexInvalidated": true,
@@ -1783,21 +1805,21 @@
       "domain": "neural",
       "critical": true,
       "ok": true,
-      "ms": 713,
+      "ms": 571,
       "detail": "ok",
       "data": {
         "_realEmbeddings": true,
         "embeddingProvider": "@claude-flow/embeddings (ruvector@0.2.27 (bundled all-MiniLM-L6-v2))",
         "models": {
-          "total": 7,
-          "ready": 7,
+          "total": 8,
+          "ready": 8,
           "training": 0,
-          "avgAccuracy": 0.8571428571428571
+          "avgAccuracy": 0.875
         },
         "patterns": {
-          "total": 6,
+          "total": 7,
           "byType": {
-            "classifier": 6
+            "classifier": 7
           },
           "totalEmbeddingDims": 384
         },
@@ -1814,20 +1836,20 @@
       "domain": "neural",
       "critical": true,
       "ok": true,
-      "ms": 919,
+      "ms": 735,
       "detail": "ok",
       "data": {
         "success": true,
         "_realEmbedding": true,
         "_embeddingSource": "ruvector@0.2.27 (bundled all-MiniLM-L6-v2)",
         "embeddingProvider": "ruvector@0.2.27 (bundled all-MiniLM-L6-v2)",
-        "modelId": "model-1790540723869-4sp5",
+        "modelId": "model-1790540861766-xnim",
         "type": "classifier",
         "status": "ready",
         "patternsStored": 1,
-        "totalPatterns": 7,
+        "totalPatterns": 8,
         "epochs": 1,
-        "trainedAt": "2026-09-27T20:25:24.598Z"
+        "trainedAt": "2026-09-27T20:27:42.367Z"
       }
     },
     {
@@ -1835,7 +1857,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 156,
+      "ms": 101,
       "detail": "help ok"
     },
     {
@@ -1843,7 +1865,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 148,
+      "ms": 104,
       "detail": "help ok"
     },
     {
@@ -1851,7 +1873,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 141,
+      "ms": 103,
       "detail": "help ok"
     },
     {
@@ -1859,7 +1881,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 121,
+      "ms": 107,
       "detail": "help ok"
     },
     {
@@ -1867,7 +1889,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 137,
+      "ms": 103,
       "detail": "help ok"
     },
     {
@@ -1875,7 +1897,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 128,
+      "ms": 104,
       "detail": "help ok"
     },
     {
@@ -1883,7 +1905,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 698,
+      "ms": 725,
       "detail": "exit=0"
     },
     {
@@ -1891,8 +1913,8 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 161,
-      "detail": "scaffold → /var/folders/1r/9rdx7_456zdc5t2rc1plvw7m0000gn/T/ruflo-grok-init-bench-muk9plf6"
+      "ms": 122,
+      "detail": "scaffold → /var/folders/1r/9rdx7_456zdc5t2rc1plvw7m0000gn/T/ruflo-grok-init-bench-muk9sko6"
     },
     {
       "id": "cli:init-grok-home",

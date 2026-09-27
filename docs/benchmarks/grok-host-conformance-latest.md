@@ -1,6 +1,6 @@
-# Grok host conformance — bench-muk9plf6
+# Grok host conformance — bench-muk9sko6
 
-**When:** 2026-09-27T20:25:26.310Z
+**When:** 2026-09-27T20:27:43.850Z
 **CLI:** `/Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js`
 **Result:** PASS — 92/93 checks (0 critical fails, 1 warns)
 
@@ -49,7 +49,7 @@
 | PASS | host-surface | `config:ruflo-mcp` | 0 | mcp_servers.ruflo present |
 | PASS | host-surface | `config:brain-docs` | 0 | Brain/KB_DIR documented |
 | PASS | host-surface | `template:home-placeholder` | 0 | {{HOME}}/ placeholder present |
-| PASS | inventory | `mcp-tools:list` | 129 | 340 tools listed |
+| PASS | inventory | `mcp-tools:list` | 202 | 340 tools listed |
 | PASS | inventory | `prefix:team_` | 0 | present |
 | PASS | inventory | `prefix:swarm_` | 0 | present |
 | PASS | inventory | `prefix:hive-mind_` | 0 | present |
@@ -76,54 +76,54 @@
 | PASS | inventory | `team-tool:team_status` | 0 | registered |
 | PASS | inventory | `team-tool:team_on_stop` | 0 | registered |
 | PASS | inventory | `team-tool:team_shutdown` | 0 | registered |
-| PASS | teams | `team_create` | 138 | ok |
-| PASS | teams | `team_plan` | 139 | ok |
-| PASS | teams | `team_spawn` | 143 | ok |
-| PASS | teams | `team_send` | 138 | ok |
-| PASS | teams | `team_status:pendingMail` | 144 | ok |
-| PASS | teams | `team_spawn:developer` | 144 | ok |
-| PASS | teams | `team_inbox` | 137 | ok |
-| PASS | teams | `team_broadcast` | 144 | ok |
-| PASS | teams | `team_on_stop` | 227 | ok |
-| PASS | teams | `team_shutdown` | 187 | ok |
-| PASS | swarm | `swarm_init` | 180 | ok |
-| PASS | swarm | `swarm_status` | 165 | ok |
-| PASS | swarm | `swarm_health` | 145 | ok |
-| PASS | swarm | `agent_spawn` | 170 | ok |
-| PASS | swarm | `agent_status` | 140 | ok |
-| PASS | swarm | `agent_list` | 180 | ok |
-| PASS | swarm | `agent_health` | 153 | ok |
-| PASS | swarm | `agent_terminate` | 161 | ok |
-| PASS | swarm | `swarm_shutdown` | 160 | ok |
-| PASS | hive-mind | `hive-mind_init` | 144 | ok |
-| PASS | hive-mind | `hive-mind_spawn` | 160 | ok |
-| PASS | hive-mind | `hive-mind_memory:set` | 329 | ok |
-| PASS | hive-mind | `hive-mind_memory:get` | 176 | ok |
-| PASS | hive-mind | `hive-mind_consensus:propose` | 156 | ok |
-| PASS | hive-mind | `hive-mind_consensus:vote` | 150 | ok |
-| PASS | hive-mind | `hive-mind_consensus:status` | 144 | ok |
-| PASS | hive-mind | `hive-mind_broadcast` | 142 | ok |
-| PASS | hive-mind | `hive-mind_status` | 161 | ok |
-| PASS | hive-mind | `hive-mind_optimize-memory` | 146 | ok |
-| PASS | hive-mind | `hive-mind_shutdown` | 150 | ok |
-| PASS | learning | `memory_store` | 317 | ok |
-| PASS | learning | `memory_retrieve` | 314 | ok |
-| PASS | learning | `memory_search` | 286 | hits=1 |
-| PASS | learning | `memory_list` | 295 | ok |
-| PASS | learning | `memory_stats` | 319 | ok |
-| PASS | learning | `hooks_pre-task` | 294 | ok |
-| PASS | learning | `hooks_route` | 612 | ok |
-| PASS | learning | `hooks_post-task` | 369 | ok |
-| PASS | learning | `hooks_intelligence` | 251 | ok |
-| PASS | learning | `memory_delete` | 369 | ok |
-| PASS | neural | `neural_status` | 713 | ok |
-| PASS | neural | `neural_train` | 919 | ok |
-| PASS | cli | `cli:swarm-help` | 156 | help ok |
-| PASS | cli | `cli:hive-mind-help` | 148 | help ok |
-| PASS | cli | `cli:neural-help` | 141 | help ok |
-| PASS | cli | `cli:hooks-help` | 121 | help ok |
-| PASS | cli | `cli:memory-help` | 137 | help ok |
-| PASS | cli | `cli:init-grok-help` | 128 | help ok |
-| PASS | cli | `cli:doctor` | 698 | exit=0 |
-| PASS | cli | `cli:init-grok` | 161 | scaffold → /var/folders/1r/9rdx7_456zdc5t2rc1plvw7m0000gn/T/ruflo-grok-init-bench-muk9plf6 |
+| PASS | teams | `team_create` | 131 | ok |
+| PASS | teams | `team_plan` | 131 | ok |
+| PASS | teams | `team_spawn` | 135 | ok |
+| PASS | teams | `team_send` | 143 | ok |
+| PASS | teams | `team_status:pendingMail` | 141 | ok |
+| PASS | teams | `team_spawn:developer` | 136 | ok |
+| PASS | teams | `team_inbox` | 131 | ok |
+| PASS | teams | `team_broadcast` | 126 | ok |
+| PASS | teams | `team_on_stop` | 125 | ok |
+| PASS | teams | `team_shutdown` | 127 | ok |
+| PASS | swarm | `swarm_init` | 126 | ok |
+| PASS | swarm | `swarm_status` | 133 | ok |
+| PASS | swarm | `swarm_health` | 129 | ok |
+| PASS | swarm | `agent_spawn` | 171 | ok |
+| PASS | swarm | `agent_status` | 130 | ok |
+| PASS | swarm | `agent_list` | 136 | ok |
+| PASS | swarm | `agent_health` | 126 | ok |
+| PASS | swarm | `agent_terminate` | 130 | ok |
+| PASS | swarm | `swarm_shutdown` | 129 | ok |
+| PASS | hive-mind | `hive-mind_init` | 128 | ok |
+| PASS | hive-mind | `hive-mind_spawn` | 131 | ok |
+| PASS | hive-mind | `hive-mind_memory:set` | 348 | ok |
+| PASS | hive-mind | `hive-mind_memory:get` | 126 | ok |
+| PASS | hive-mind | `hive-mind_consensus:propose` | 139 | ok |
+| PASS | hive-mind | `hive-mind_consensus:vote` | 140 | ok |
+| PASS | hive-mind | `hive-mind_consensus:status` | 160 | ok |
+| PASS | hive-mind | `hive-mind_broadcast` | 147 | ok |
+| PASS | hive-mind | `hive-mind_status` | 142 | ok |
+| PASS | hive-mind | `hive-mind_optimize-memory` | 128 | ok |
+| PASS | hive-mind | `hive-mind_shutdown` | 126 | ok |
+| PASS | learning | `memory_store` | 271 | ok |
+| PASS | learning | `memory_retrieve` | 277 | ok |
+| PASS | learning | `memory_search` | 269 | hits=1 |
+| PASS | learning | `memory_list` | 274 | ok |
+| PASS | learning | `memory_stats` | 342 | ok |
+| PASS | learning | `hooks_pre-task` | 259 | ok |
+| PASS | learning | `hooks_route` | 582 | ok |
+| PASS | learning | `hooks_post-task` | 281 | ok |
+| PASS | learning | `hooks_intelligence` | 220 | ok |
+| PASS | learning | `memory_delete` | 297 | ok |
+| PASS | neural | `neural_status` | 571 | ok |
+| PASS | neural | `neural_train` | 735 | ok |
+| PASS | cli | `cli:swarm-help` | 101 | help ok |
+| PASS | cli | `cli:hive-mind-help` | 104 | help ok |
+| PASS | cli | `cli:neural-help` | 103 | help ok |
+| PASS | cli | `cli:hooks-help` | 107 | help ok |
+| PASS | cli | `cli:memory-help` | 103 | help ok |
+| PASS | cli | `cli:init-grok-help` | 104 | help ok |
+| PASS | cli | `cli:doctor` | 725 | exit=0 |
+| PASS | cli | `cli:init-grok` | 122 | scaffold → /var/folders/1r/9rdx7_456zdc5t2rc1plvw7m0000gn/T/ruflo-grok-init-bench-muk9sko6 |
 | PASS | cli | `cli:init-grok-home` | 0 | HOME paths materialized |
