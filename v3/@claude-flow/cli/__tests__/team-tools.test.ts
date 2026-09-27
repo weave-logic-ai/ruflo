@@ -53,12 +53,23 @@ describe('teamTools (ADR-320)', () => {
       next: ['developer'],
     });
     expect(spawn.success).toBe(true);
-    expect((spawn as { spawnPlan?: { host?: { grok?: { isolation?: string } } } }).spawnPlan?.host?.grok)
-      .toBeTruthy();
-    expect(
-      (spawn as { spawnPlan: { host: { grok: { capability_mode: string } } } }).spawnPlan.host.grok
-        .capability_mode,
-    ).toBe('read-only');
+    const grok = (spawn as {
+      spawnPlan: {
+        host: {
+          grok: {
+            spawn: { description: string; background: boolean; isolation: string };
+            advisory: { capability_mode: string };
+          };
+        };
+      };
+    }).spawnPlan.host.grok;
+    expect(Object.keys(grok.spawn).sort()).toEqual(['background', 'description', 'isolation']);
+    expect(grok.spawn).toEqual({
+      description: 'architect:architect',
+      background: true,
+      isolation: 'none',
+    });
+    expect(grok.advisory.capability_mode).toBe('read-only');
 
     const send = await tool('team_send').handler({
       team: 'demo',

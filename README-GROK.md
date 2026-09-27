@@ -11,6 +11,10 @@
 
 **Architecture decision:** [ADR-320 — Host-Agnostic Agent Teams](v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md)
 
+**Operator guide (what `init --grok` installs into an app):** [docs/grok/README.md](docs/grok/README.md). That page is the usage doc. It was checked against **Grok Build 1.0.41**. When `grok --version` moves, follow the re-check list there before forwarding spawn arguments.
+
+On 1.0.41, `spawn_subagent` takes `prompt`, `description`, `background`, and `isolation`. `team_spawn` puts those on `host.grok.spawn`. `capability_mode` and `subagent_type` are `host.grok.advisory` — the prompt carries them, and passing them into `spawn_subagent` fails the call. Project `.grok/config.toml` does not apply `[subagents]`.
+
 ---
 
 ## Use Ruflo on a project *outside* this directory
@@ -281,19 +285,19 @@ If handshake fails on a missing `forge-hybrid.mjs`, copy it from the Brain marke
 There is **no** Claude `SendMessage` on Grok. Use Ruflo:
 
 ```
-team_create → team_plan → team_spawn → spawn_subagent(plan.host.grok)
+team_create → team_plan → team_spawn → spawn_subagent(prompt + host.grok.spawn)
            → team_send / team_inbox → team_on_stop → team_shutdown
 ```
 
 **MCP parameter names:** `team` and `agent` (not `teamId` / `agentName`).
 
-**Grok spawn defaults that beat shared-tree Claude teams:**
+**Grok Build 1.0.41 spawn:** pass `prompt` plus `host.grok.spawn` (`description`, `background`, `isolation`). `advisory.capability_mode` stays on the plan; the child prompt repeats it. Writers use `isolation: "worktree"`.
 
-| Role | `capability_mode` | `isolation` |
+| Role | Prompt constraint | `isolation` |
 |------|-------------------|-------------|
-| architect / reviewer / researcher | `read-only` | `none` |
-| developer / coder | `all` | **`worktree`** |
-| tester | `all` / `execute` | **`worktree`** when writing tests |
+| architect / reviewer / researcher | read-only | `none` |
+| developer / coder | full tools | **`worktree`** |
+| tester | full tools | **`worktree`** when writing tests |
 
 Pipeline shape (lead is you):
 

@@ -53,7 +53,7 @@ allow = [
 ]
 
 # ---------------------------------------------------------------------------
-# Subagents — defaults that beat Claude Agent Teams on file races
+# Subagent defaults are user-level on Grok Build 1.0.41.
+# This file contributes [mcp_servers], [plugins], [permission], and
+# [mcp].max_output_bytes. A [subagents] table here is ignored.
 # ---------------------------------------------------------------------------
-[subagents]
-enabled = true

@@ -398,8 +398,13 @@ function domainTeams() {
       prompt: 'Design for conformance bench',
       next: ['developer'],
     }),
-    (j) =>
-      j?.spawnPlan?.host?.grok ? null : 'missing spawnPlan.host.grok',
+    (j) => {
+      const spawn = j?.spawnPlan?.host?.grok?.spawn;
+      if (!spawn) return 'missing spawnPlan.host.grok.spawn';
+      const keys = Object.keys(spawn).sort().join(',');
+      if (keys !== 'background,description,isolation') return `spawn keys drifted: ${keys}`;
+      return null;
+    },
   );
   expectOk(
     'team_send',

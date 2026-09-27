@@ -62,7 +62,9 @@ allow = [
 ]
 
 # ---------------------------------------------------------------------------
-# Subagents — defaults that beat Claude Agent Teams on file races
+# Subagent defaults are user-level on Grok Build 1.0.41.
+# Project .grok/config.toml contributes only [mcp_servers], [plugins],
+# [permission], and [mcp].max_output_bytes. A [subagents] table here is ignored.
+# Put role defaults in ~/.grok/config.toml if you need them.
+# Team children: pass host.grok.spawn from team_spawn (see docs/grok/README.md).
 # ---------------------------------------------------------------------------
-[subagents]
-enabled = true

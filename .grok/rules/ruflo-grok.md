@@ -55,14 +55,25 @@ lead (you)
   → lead synthesizes
 ```
 
-### Defaults that beat Claude Agent Teams
+### Spawn contract (Grok Build 1.0.41)
 
-| Role type | `capability_mode` | `isolation` |
-|-----------|-------------------|-------------|
-| researcher / explorer | `read-only` or explore agent | `none` |
-| architect / reviewer | `read-only` or `read-write` | `none` |
-| coder / implementer | `all` or `read-write` | **`worktree`** |
-| tester | `execute` or `all` | `worktree` if writing tests into tree |
+`spawn_subagent` takes `prompt`, `description`, `background`, `isolation`, and optionally `cwd`, `resume_from`, and `model`. It does not take `subagent_type` or `capability_mode`. An omitted type is `general-purpose`. Nesting depth is 1, so only the lead spawns.
+
+`team_spawn` returns `host.grok.spawn` for those arguments and `host.grok.advisory` for the role constraint. Pass `spawn` plus `prompt`. The prompt tells a read-only role not to edit. `isolation: "worktree"` is what Grok enforces for writers.
+
+`.grok/agents/ruflo-*` are session profiles (`grok --agent-profile` or `/agents`). They are not spawn types.
+
+Project `.grok/config.toml` contributes `[mcp_servers]`, `[plugins]`, `[permission]`, and `[mcp].max_output_bytes`. A `[subagents]` table in that file is ignored. Subagent defaults belong in `~/.grok/config.toml`.
+
+Operator guide: `docs/grok/README.md`. If `grok --version` moves past 1.0.41, re-check `~/.grok/docs/user-guide/16-subagents.md` and `26-config-reference.md` before forwarding new spawn keys.
+
+### Defaults
+
+| Role | Prompt constraint | `isolation` |
+|------|-------------------|-------------|
+| researcher / architect / reviewer | read-only | `none` |
+| coder / implementer | full tools | **`worktree`** |
+| tester | full tools | **`worktree`** when writing tests |
 
 - Always pass a clear **name/role** in the prompt (“You are architect on team feature-x”).
 - Tell each agent **who to message next** and **what artifact to produce**.
@@ -72,13 +83,13 @@ lead (you)
 ### Spawn pattern (all in one message)
 
 ```
-spawn_subagent: architect  (read-only)  → design → team_send/memory to developer
-spawn_subagent: developer  (worktree)   → implement → handoff to tester
-spawn_subagent: tester     (worktree)   → tests → handoff to reviewer
-spawn_subagent: reviewer   (read-only)  → review → report to lead
+spawn_subagent({ prompt, description, background: true, isolation: "none" })
+  architect → team_send to developer
+spawn_subagent({ ..., isolation: "worktree" })
+  developer → tester → reviewer (reviewer isolation "none")
 ```
 
-Do **not** invent a `SendMessage` tool. Use MCP team tools or memory handoffs.
+Use MCP team tools or memory handoffs. There is no `SendMessage` tool.
 
 ## Skills
 

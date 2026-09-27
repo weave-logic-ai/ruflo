@@ -438,8 +438,9 @@ async function initGrokAction(
     output.writeln();
     output.writeln(output.bold('Next steps:'));
     output.printList([
-      'Trust this folder in Grok (hooks) if not already trusted',
-      'Restart Grok session so project MCP/rules load',
+      'Trust this folder in Grok (/hooks-trust or grok --trust) so MCP, hooks, skills, and rules load together',
+      'Restart Grok so .grok/config.toml is applied',
+      'Read docs/grok/README.md — spawn contract checked on Grok Build 1.0.41',
       'Verify: grok mcp list && grok mcp doctor ruflo',
       'Optional: npx ruvnet-brain@latest then enable ruvnet-brain in .grok/config.toml',
       'If brain MCP fails on forge-hybrid.mjs, copy it from the plugin marketplace kb/',

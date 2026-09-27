@@ -179,6 +179,25 @@ function saveTeam(team: TeamState): void {
   writeJson(teamPath(team.name), team);
 }
 
+/** Spawn arguments Grok Build 1.0.41 actually accepts on spawn_subagent. */
+function grokSpawnArgs(role: string, agentName: string, isolation: string): Record<string, unknown> {
+  return {
+    description: `${role}:${agentName}`,
+    background: true,
+    isolation,
+  };
+}
+
+function roleConstraint(mode: string, isolation: string): string {
+  if (mode === 'read-only') {
+    return 'Constraint: do not create, edit, delete, or move files, and do not run commands that change the repo. Read, search, and report.';
+  }
+  if (isolation === 'worktree') {
+    return 'Constraint: Grok isolates your edits in a git worktree. Stay inside that worktree and report its path when you finish.';
+  }
+  return 'Constraint: report results to the team lead. Stay inside the files this task names.';
+}
+
 function buildSpawnPlan(
   team: TeamState,
   agentName: string,
@@ -187,15 +206,18 @@ function buildSpawnPlan(
   next: string[],
 ): Record<string, unknown> {
   const defaults = ROLE_DEFAULTS[role] || ROLE_DEFAULTS.coder;
+  const spawn = grokSpawnArgs(role, agentName, defaults.isolation);
   const protocol = [
     `You are "${agentName}" (role: ${role}) on team "${team.name}".`,
-    `Host-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.`,
-    `Prefer Ruflo MCP team_send / team_inbox when available; CLI fallback:`,
+    'Grok Build 1.0.41 runs you as a general-purpose subagent. Nesting depth is 1: do not call spawn_subagent.',
+    roleConstraint(defaults.capability_mode, defaults.isolation),
+    'Host-agnostic Agent Teams bus (ADR-320). There is no Claude SendMessage tool.',
+    'Prefer Ruflo MCP team_send / team_inbox when available; CLI fallback:',
     `  node scripts/grok-team-bus.mjs send --team ${team.name} --to <next> --summary "<short>" --message "<handoff>"`,
     `Or store under memory namespace team:${team.name}.`,
     next.length
       ? `Primary next agent(s): ${next.join(', ')}`
-      : `Report completion to the team lead (parent session).`,
+      : 'Report completion to the team lead (parent session).',
     `Check inbox at start via team_inbox (team=${team.name}, agent=${agentName}).`,
     '',
     'Task:',
@@ -210,11 +232,15 @@ function buildSpawnPlan(
     next,
     host: {
       grok: {
-        subagent_type: defaults.subagent_type,
-        capability_mode: defaults.capability_mode,
-        isolation: defaults.isolation,
-        background: true,
-        description: `${role}:${agentName}`,
+        // Checked against Grok Build 1.0.41. Pass `spawn` to spawn_subagent
+        // together with top-level `prompt`. Leave `advisory` on the plan.
+        contract: 'grok-build-1.0.41',
+        spawn,
+        advisory: {
+          capability_mode: defaults.capability_mode,
+          subagent_type: defaults.subagent_type,
+          note: 'Grok Build 1.0.41 does not take capability_mode or subagent_type on spawn_subagent. The child is general-purpose; the prompt carries the constraint. isolation is the enforced knob. .grok/agents/*.md are session profiles (grok --agent-profile), not spawn types.',
+        },
       },
       claude: {
         taskType: defaults.claudeTaskType || role,

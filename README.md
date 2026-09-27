@@ -44,6 +44,8 @@ User --> Ruflo (CLI/MCP) --> Router --> Swarm --> Agents --> Memory --> LLM Prov
 
 > **New to Ruflo?** You don't need to learn 314 MCP tools or 26 CLI commands. After `init`, just use Claude Code normally — the hooks system automatically routes tasks, learns from successful patterns, and coordinates agents in the background.
 
+**Grok Build:** `npx ruflo init --grok` writes the project host surface (`.grok/`, the team bus, and the operator guide). Setup, the `spawn_subagent` contract, and what to re-check when Grok updates: [docs/grok/README.md](docs/grok/README.md). Monorepo / pre-publish detail: [README-GROK.md](README-GROK.md).
+
 <details>
 <summary><strong>📖 Background — where the name comes from</strong></summary>
 

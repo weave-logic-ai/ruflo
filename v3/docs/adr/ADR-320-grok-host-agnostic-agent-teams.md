@@ -134,6 +134,19 @@ Grok lead calls `spawn_subagent` with the plan; it does **not** need `SendMessag
 | Codex-style “single executor + swarm records only” | Fails requirement: agent teams + skills are critical |
 | Fork forever without agnostic bus | Blocks upstream and multi-host |
 
+## Amendment (2026-09-27) — Grok Build 1.0.41
+
+Re-checked against `grok 1.0.41` and `~/.grok/docs/user-guide/` on that binary. The spawn example in the Decision section above matches Grok as of 2026-07-20. The live tool no longer matches it.
+
+- `spawn_subagent` accepts `prompt`, `description`, `background`, `isolation`, and optionally `cwd`, `resume_from`, and `model`. It does not accept `subagent_type` or `capability_mode`. An omitted type is `general-purpose`. Capability is a property of the agent definition, which spawn cannot select.
+- Nesting depth is 1. Only the lead calls `spawn_subagent`.
+- Project `.grok/config.toml` contributes `[mcp_servers]`, `[plugins]`, `[permission]`, and `[mcp].max_output_bytes`. `[subagents]` in that file is ignored.
+- `.grok/agents/*.md` are session profiles (`--agent-profile`, `/agents`).
+- MCP tools are still reached through `search_tool` / `use_tool` (`ruflo__team_create`). `grok mcp add` still defaults to user scope; `--scope project` / `-s project` writes `./.grok/config.toml`.
+- Folder trust (`/hooks-trust`, `grok --trust`) gates project MCP, hooks, skills, and rules together.
+
+`team_spawn` now returns `host.grok.spawn` (the arguments to pass) and `host.grok.advisory` (role constraint, not a spawn argument). The prompt states the read-only or worktree constraint. `isolation: "worktree"` remains the enforced isolation knob. Operator steps and the re-check list live in `docs/grok/README.md`.
+
 ## References
 
 - [RuvNet Brain](https://isovision.ai/ruvnet-brain/) — grounding at intent + action; `search_ruvnet`

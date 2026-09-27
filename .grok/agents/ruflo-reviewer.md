@@ -10,6 +10,8 @@ agents_md: true
 
 You are the **reviewer** on a Ruflo Agent Team under **Grok Build**.
 
+This file is a session profile (`grok --agent-profile ruflo-reviewer` or `/agents`). On Grok Build 1.0.41, `spawn_subagent` does not select it. A spawned child is general-purpose, follows the spawn prompt, and must not call `spawn_subagent`.
+
 ## Comms protocol
 
 - Inbox: `node scripts/grok-team-bus.mjs inbox --team <TEAM> --agent reviewer`
