@@ -574,18 +574,16 @@ function domainHiveMind() {
       ? null
       : `init failed: ${j?.error || 'unknown'}`,
   );
+  const hiveToken = init.json?.hiveToken;
 
-  expectOk(
-    'hive-mind_spawn',
-    'hive-mind',
-    true,
-    mcpExec('hive-mind_spawn', {
-      count: 2,
-      role: 'worker',
-      agentType: 'coder',
-      prefix: `${RUN_ID}-w`,
-    }),
-  );
+  const spawn = mcpExec('hive-mind_spawn', {
+    count: 2,
+    role: 'worker',
+    agentType: 'coder',
+    prefix: `${RUN_ID}-w`,
+  });
+  expectOk('hive-mind_spawn', 'hive-mind', true, spawn);
+  const voterId = spawn.json?.workers?.[0]?.agentId || `${RUN_ID}-queen`;
 
   expectOk(
     'hive-mind_memory:set',
@@ -632,7 +630,8 @@ function domainHiveMind() {
         action: 'vote',
         proposalId,
         vote: true,
-        voterId: `${RUN_ID}-queen`,
+        voterId,
+        hiveToken,
       }),
     );
     expectOk(

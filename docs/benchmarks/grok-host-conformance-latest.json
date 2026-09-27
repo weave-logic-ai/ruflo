@@ -1,10 +1,10 @@
 {
-  "id": "bench-mrthua56",
+  "id": "bench-muk9plf6",
   "title": "Grok host conformance bench (ADR-320 Phase 4)",
   "host": "grok",
   "cli": "/Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js",
   "repo": "/Users/mathewbeane/dev/ruflo",
-  "timestamp": "2026-07-20T17:23:48.613Z",
+  "timestamp": "2026-09-27T20:25:26.310Z",
   "summary": {
     "total": 93,
     "pass": 92,
@@ -205,8 +205,8 @@
       "domain": "inventory",
       "critical": true,
       "ok": true,
-      "ms": 103,
-      "detail": "318 tools listed"
+      "ms": 129,
+      "detail": "340 tools listed"
     },
     {
       "id": "prefix:team_",
@@ -421,18 +421,18 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 100,
+      "ms": 138,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "create",
         "team": {
-          "id": "bench-mrthua56-team",
-          "name": "bench-mrthua56-team",
+          "id": "bench-muk9plf6-team",
+          "name": "bench-muk9plf6-team",
           "topology": "hierarchical",
           "maxAgents": 4,
           "status": "active",
-          "createdAt": "2026-07-20T17:23:38.788Z",
+          "createdAt": "2026-09-27T20:25:14.680Z",
           "host": "grok",
           "members": {},
           "plan": {
@@ -447,7 +447,7 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 101,
+      "ms": 139,
       "detail": "ok",
       "data": {
         "success": true,
@@ -476,7 +476,7 @@
             }
           ],
           "index": 0,
-          "updatedAt": "2026-07-20T17:23:38.889Z"
+          "updatedAt": "2026-09-27T20:25:14.821Z"
         }
       }
     },
@@ -485,16 +485,16 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 100,
+      "ms": 143,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "spawn",
         "spawnPlan": {
-          "teamId": "bench-mrthua56-team",
+          "teamId": "bench-muk9plf6-team",
           "name": "architect",
           "role": "architect",
-          "prompt": "You are \"architect\" (role: architect) on team \"bench-mrthua56-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-mrthua56-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-mrthua56-team.\nPrimary next agent(s): developer\nCheck inbox at start via team_inbox (team=bench-mrthua56-team, agent=architect).\n\nTask:\nDesign for conformance bench",
+          "prompt": "You are \"architect\" (role: architect) on team \"bench-muk9plf6-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-muk9plf6-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-muk9plf6-team.\nPrimary next agent(s): developer\nCheck inbox at start via team_inbox (team=bench-muk9plf6-team, agent=architect).\n\nTask:\nDesign for conformance bench",
           "next": [
             "developer"
           ],
@@ -512,7 +512,7 @@
             }
           }
         },
-        "teamId": "bench-mrthua56-team"
+        "teamId": "bench-muk9plf6-team"
       }
     },
     {
@@ -520,21 +520,21 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 104,
+      "ms": 138,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "send",
         "message": {
-          "id": "msg_1784568219094_dicwre",
-          "teamId": "bench-mrthua56-team",
+          "id": "msg_1790540715102_02shf9",
+          "teamId": "bench-muk9plf6-team",
           "from": "architect",
           "to": "developer",
           "summary": "design",
           "content": "Layered architecture for bench",
           "type": "handoff",
           "priority": 2,
-          "timestamp": "2026-07-20T17:23:39.094Z"
+          "timestamp": "2026-09-27T20:25:15.102Z"
         }
       }
     },
@@ -543,25 +543,25 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 101,
+      "ms": 144,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "status",
         "team": {
-          "id": "bench-mrthua56-team",
-          "name": "bench-mrthua56-team",
+          "id": "bench-muk9plf6-team",
+          "name": "bench-muk9plf6-team",
           "topology": "hierarchical",
           "maxAgents": 4,
           "status": "active",
-          "createdAt": "2026-07-20T17:23:38.788Z",
+          "createdAt": "2026-09-27T20:25:14.680Z",
           "host": "grok",
           "members": {
             "architect": {
               "name": "architect",
               "role": "architect",
               "status": "registered",
-              "registeredAt": "2026-07-20T17:23:38.989Z",
+              "registeredAt": "2026-09-27T20:25:14.964Z",
               "next": [
                 "developer"
               ],
@@ -604,12 +604,12 @@
               }
             ],
             "index": 0,
-            "updatedAt": "2026-07-20T17:23:38.889Z"
+            "updatedAt": "2026-09-27T20:25:14.821Z"
           }
         },
         "pendingMail": {
-          "architect": 2,
-          "developer": 6
+          "architect": 6,
+          "developer": 14
         }
       }
     },
@@ -618,16 +618,16 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 100,
+      "ms": 144,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "spawn",
         "spawnPlan": {
-          "teamId": "bench-mrthua56-team",
+          "teamId": "bench-muk9plf6-team",
           "name": "developer",
           "role": "developer",
-          "prompt": "You are \"developer\" (role: developer) on team \"bench-mrthua56-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-mrthua56-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-mrthua56-team.\nPrimary next agent(s): tester\nCheck inbox at start via team_inbox (team=bench-mrthua56-team, agent=developer).\n\nTask:\nImplement design",
+          "prompt": "You are \"developer\" (role: developer) on team \"bench-muk9plf6-team\".\nHost-agnostic Agent Teams bus (ADR-320). There is NO Claude SendMessage tool.\nPrefer Ruflo MCP team_send / team_inbox when available; CLI fallback:\n  node scripts/grok-team-bus.mjs send --team bench-muk9plf6-team --to <next> --summary \"<short>\" --message \"<handoff>\"\nOr store under memory namespace team:bench-muk9plf6-team.\nPrimary next agent(s): tester\nCheck inbox at start via team_inbox (team=bench-muk9plf6-team, agent=developer).\n\nTask:\nImplement design",
           "next": [
             "tester"
           ],
@@ -645,7 +645,7 @@
             }
           }
         },
-        "teamId": "bench-mrthua56-team"
+        "teamId": "bench-muk9plf6-team"
       }
     },
     {
@@ -653,7 +653,7 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 102,
+      "ms": 137,
       "detail": "ok",
       "data": {
         "success": true,
@@ -725,6 +725,94 @@
             "type": "handoff",
             "priority": 2,
             "timestamp": "2026-07-20T17:23:39.094Z"
+          },
+          {
+            "id": "msg_1784568219501_didjox",
+            "teamId": "bench-mrthua56-team",
+            "from": "lead",
+            "to": "*",
+            "summary": "sync",
+            "content": "bench broadcast to members",
+            "type": "broadcast",
+            "priority": 2,
+            "timestamp": "2026-07-20T17:23:39.501Z"
+          },
+          {
+            "id": "msg_1788835989125_d9k99l",
+            "teamId": "bench-mts2reel-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-09-08T02:53:09.125Z"
+          },
+          {
+            "id": "msg_1788835989627_9we9m3",
+            "teamId": "bench-mts2reel-team",
+            "from": "lead",
+            "to": "*",
+            "summary": "sync",
+            "content": "bench broadcast to members",
+            "type": "broadcast",
+            "priority": 2,
+            "timestamp": "2026-09-08T02:53:09.627Z"
+          },
+          {
+            "id": "msg_1790540596796_kkt0kv",
+            "teamId": "bench-muk9n27s-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-09-27T20:23:16.796Z"
+          },
+          {
+            "id": "msg_1790540597278_5g7g6p",
+            "teamId": "bench-muk9n27s-team",
+            "from": "lead",
+            "to": "*",
+            "summary": "sync",
+            "content": "bench broadcast to members",
+            "type": "broadcast",
+            "priority": 2,
+            "timestamp": "2026-09-27T20:23:17.278Z"
+          },
+          {
+            "id": "msg_1790540674197_2ldtkg",
+            "teamId": "bench-muk9optw-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-09-27T20:24:34.197Z"
+          },
+          {
+            "id": "msg_1790540674731_z6maz8",
+            "teamId": "bench-muk9optw-team",
+            "from": "lead",
+            "to": "*",
+            "summary": "sync",
+            "content": "bench broadcast to members",
+            "type": "broadcast",
+            "priority": 2,
+            "timestamp": "2026-09-27T20:24:34.731Z"
+          },
+          {
+            "id": "msg_1790540715102_02shf9",
+            "teamId": "bench-muk9plf6-team",
+            "from": "architect",
+            "to": "developer",
+            "summary": "design",
+            "content": "Layered architecture for bench",
+            "type": "handoff",
+            "priority": 2,
+            "timestamp": "2026-09-27T20:25:15.102Z"
           }
         ],
         "peek": true
@@ -735,21 +823,21 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 104,
+      "ms": 144,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "send",
         "message": {
-          "id": "msg_1784568219501_didjox",
-          "teamId": "bench-mrthua56-team",
+          "id": "msg_1790540715672_5zxxxy",
+          "teamId": "bench-muk9plf6-team",
           "from": "lead",
           "to": "*",
           "summary": "sync",
           "content": "bench broadcast to members",
           "type": "broadcast",
           "priority": 2,
-          "timestamp": "2026-07-20T17:23:39.501Z"
+          "timestamp": "2026-09-27T20:25:15.672Z"
         }
       }
     },
@@ -758,7 +846,7 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 104,
+      "ms": 227,
       "detail": "ok",
       "data": {
         "success": true,
@@ -780,12 +868,12 @@
       "domain": "teams",
       "critical": true,
       "ok": true,
-      "ms": 102,
+      "ms": 187,
       "detail": "ok",
       "data": {
         "success": true,
         "action": "shutdown",
-        "teamId": "bench-mrthua56-team"
+        "teamId": "bench-muk9plf6-team"
       }
     },
     {
@@ -793,15 +881,15 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 102,
+      "ms": 180,
       "detail": "ok",
       "data": {
         "success": true,
-        "swarmId": "swarm-1784568219810-5tnyph",
+        "swarmId": "swarm-1790540716267-ci7eek",
         "topology": "hierarchical",
         "strategy": "specialized",
         "maxAgents": 6,
-        "initializedAt": "2026-07-20T17:23:39.810Z",
+        "initializedAt": "2026-09-27T20:25:16.267Z",
         "config": {
           "topology": "hierarchical",
           "maxAgents": 6,
@@ -818,11 +906,11 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 100,
+      "ms": 165,
       "detail": "ok",
       "data": {
-        "swarmId": "swarm-1784568219810-5tnyph",
-        "status": "terminated",
+        "swarmId": "swarm-1790540716267-ci7eek",
+        "status": "running",
         "topology": "hierarchical",
         "maxAgents": 6,
         "agentCount": 0,
@@ -835,8 +923,8 @@
           "autoScaling": true,
           "consensusMechanism": "majority"
         },
-        "createdAt": "2026-07-20T17:23:39.810Z",
-        "updatedAt": "2026-07-20T17:23:39.910Z"
+        "createdAt": "2026-09-27T20:25:16.267Z",
+        "updatedAt": "2026-09-27T20:25:16.267Z"
       }
     },
     {
@@ -844,19 +932,19 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 98,
+      "ms": 145,
       "detail": "ok",
       "data": {
-        "status": "degraded",
-        "healthy": false,
-        "swarmId": "swarm-1784568219810-5tnyph",
+        "status": "healthy",
+        "healthy": true,
+        "swarmId": "swarm-1790540716267-ci7eek",
         "topology": "hierarchical",
         "agentCount": 0,
         "checks": [
           {
             "name": "coordinator",
-            "status": "warn",
-            "message": "Swarm status: terminated"
+            "status": "ok",
+            "message": "Coordinator active"
           },
           {
             "name": "agents",
@@ -874,7 +962,7 @@
             "message": "Topology: hierarchical"
           }
         ],
-        "checkedAt": "2026-07-20T17:23:40.007Z"
+        "checkedAt": "2026-09-27T20:25:16.578Z"
       }
     },
     {
@@ -882,16 +970,16 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 101,
+      "ms": 170,
       "detail": "ok",
       "data": {
         "success": true,
-        "agentId": "bench-mrthua56-coder",
+        "agentId": "bench-muk9plf6-coder",
         "agentType": "coder",
         "model": "sonnet",
         "modelRoutedBy": "default",
         "status": "registered",
-        "createdAt": "2026-07-20T17:23:40.107Z",
+        "createdAt": "2026-09-27T20:25:16.717Z",
         "note": "Agent registered for coordination. Three execution paths: (1) call agent_execute(agentId, prompt) — direct LLM call via Anthropic Messages API (requires ANTHROPIC_API_KEY); (2) Claude Code Task tool — spawns a real subagent; (3) claude -p — headless background instance."
       }
     },
@@ -900,15 +988,15 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 98,
+      "ms": 140,
       "detail": "ok",
       "data": {
-        "agentId": "bench-mrthua56-coder",
+        "agentId": "bench-muk9plf6-coder",
         "agentType": "coder",
         "status": "idle",
         "health": 1,
         "taskCount": 0,
-        "createdAt": "2026-07-20T17:23:40.107Z",
+        "createdAt": "2026-09-27T20:25:16.717Z",
         "lastResult": null
       }
     },
@@ -917,7 +1005,7 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 99,
+      "ms": 180,
       "detail": "ok",
       "data": {
         "agents": [
@@ -930,12 +1018,12 @@
             "createdAt": "2026-07-20T17:19:37.215Z"
           },
           {
-            "agentId": "bench-mrthua56-coder",
+            "agentId": "bench-muk9plf6-coder",
             "agentType": "coder",
             "status": "idle",
             "health": 1,
             "taskCount": 0,
-            "createdAt": "2026-07-20T17:23:40.107Z"
+            "createdAt": "2026-09-27T20:25:16.717Z"
           }
         ],
         "total": 2,
@@ -947,15 +1035,15 @@
       "domain": "swarm",
       "critical": false,
       "ok": true,
-      "ms": 100,
+      "ms": 153,
       "detail": "ok",
       "data": {
-        "agentId": "bench-mrthua56-coder",
+        "agentId": "bench-muk9plf6-coder",
         "health": 1,
         "status": "idle",
         "healthy": true,
         "taskCount": 0,
-        "uptime": 298
+        "uptime": 506
       }
     },
     {
@@ -963,13 +1051,13 @@
       "domain": "swarm",
       "critical": false,
       "ok": true,
-      "ms": 100,
+      "ms": 161,
       "detail": "ok",
       "data": {
         "success": true,
-        "agentId": "bench-mrthua56-coder",
+        "agentId": "bench-muk9plf6-coder",
         "terminated": true,
-        "terminatedAt": "2026-07-20T17:23:40.506Z"
+        "terminatedAt": "2026-09-27T20:25:17.383Z"
       }
     },
     {
@@ -977,12 +1065,15 @@
       "domain": "swarm",
       "critical": true,
       "ok": true,
-      "ms": 98,
-      "detail": "already terminated (ok)",
+      "ms": 160,
+      "detail": "ok",
       "data": {
-        "success": false,
-        "swarmId": "swarm-1784568219810-5tnyph",
-        "error": "Swarm already terminated"
+        "success": true,
+        "swarmId": "swarm-1790540716267-ci7eek",
+        "terminated": true,
+        "graceful": true,
+        "agentsTerminated": 1,
+        "terminatedAt": "2026-09-27T20:25:17.542Z"
       }
     },
     {
@@ -990,15 +1081,16 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 100,
+      "ms": 144,
       "detail": "ok",
       "data": {
         "success": true,
-        "hiveId": "hive-1784568220804-oxl8ke",
+        "hiveId": "hive-1790540717830-8pvzch",
         "topology": "hierarchical",
         "consensus": "raft",
-        "queenId": "bench-mrthua56-queen",
+        "queenId": "bench-muk9plf6-queen",
         "status": "initialized",
+        "hiveToken": "69fa4e6ff76a2d4a944b8d04683c10df7c6decd1d2cbf0541e6689f9738558d3",
         "config": {
           "topology": "hierarchical",
           "consensus": "raft",
@@ -1006,7 +1098,7 @@
           "persist": true,
           "memoryBackend": "hybrid"
         },
-        "createdAt": "2026-07-20T17:23:40.804Z"
+        "createdAt": "2026-09-27T20:25:17.830Z"
       }
     },
     {
@@ -1014,21 +1106,21 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 102,
+      "ms": 160,
       "detail": "ok",
       "data": {
         "success": true,
         "spawned": 2,
         "workers": [
           {
-            "agentId": "bench-mrthua56-w-1784568220906-4zxu",
+            "agentId": "bench-muk9plf6-w-1790540717994-wm2b",
             "role": "worker",
-            "joinedAt": "2026-07-20T17:23:40.906Z"
+            "joinedAt": "2026-09-27T20:25:17.994Z"
           },
           {
-            "agentId": "bench-mrthua56-w-1784568220906-nwxf",
+            "agentId": "bench-muk9plf6-w-1790540717994-hcld",
             "role": "worker",
-            "joinedAt": "2026-07-20T17:23:40.906Z"
+            "joinedAt": "2026-09-27T20:25:17.994Z"
           }
         ],
         "totalWorkers": 2,
@@ -1041,13 +1133,13 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 240,
+      "ms": 329,
       "detail": "ok",
       "data": {
         "action": "set",
-        "key": "bench-mrthua56-shared",
+        "key": "bench-muk9plf6-shared",
         "success": true,
-        "updatedAt": "2026-07-20T17:23:41.115Z"
+        "updatedAt": "2026-09-27T20:25:18.319Z"
       }
     },
     {
@@ -1055,11 +1147,11 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 103,
+      "ms": 176,
       "detail": "ok",
       "data": {
         "action": "get",
-        "key": "bench-mrthua56-shared",
+        "key": "bench-muk9plf6-shared",
         "value": "hive-shared-knowledge",
         "exists": true
       }
@@ -1069,18 +1161,18 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 102,
+      "ms": 156,
       "detail": "ok",
       "data": {
         "action": "propose",
-        "proposalId": "proposal-1784568221351-81fg52",
+        "proposalId": "proposal-1790540718654-dy5hso",
         "type": "bench",
         "strategy": "raft",
         "status": "pending",
         "required": 2,
         "totalNodes": 2,
-        "term": 221252,
-        "timeoutAt": "2026-07-20T17:24:11.351Z"
+        "term": 718503,
+        "timeoutAt": "2026-09-27T20:25:48.654Z"
       }
     },
     {
@@ -1088,12 +1180,12 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 100,
+      "ms": 150,
       "detail": "ok",
       "data": {
         "action": "vote",
-        "proposalId": "proposal-1784568221351-81fg52",
-        "voterId": "bench-mrthua56-queen",
+        "proposalId": "proposal-1790540718654-dy5hso",
+        "voterId": "bench-muk9plf6-w-1790540717994-wm2b",
         "vote": true,
         "strategy": "raft",
         "votesFor": 1,
@@ -1102,7 +1194,7 @@
         "totalNodes": 2,
         "resolved": false,
         "status": "pending",
-        "term": 221252
+        "term": 718503
       }
     },
     {
@@ -1110,11 +1202,11 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 101,
+      "ms": 144,
       "detail": "ok",
       "data": {
         "action": "status",
-        "proposalId": "proposal-1784568221351-81fg52",
+        "proposalId": "proposal-1790540718654-dy5hso",
         "type": "bench",
         "strategy": "raft",
         "status": "pending",
@@ -1124,9 +1216,9 @@
         "required": 2,
         "totalNodes": 2,
         "resolved": false,
-        "term": 221252,
+        "term": 718503,
         "timedOut": false,
-        "timeoutAt": "2026-07-20T17:24:11.351Z"
+        "timeoutAt": "2026-09-27T20:25:48.654Z"
       }
     },
     {
@@ -1134,14 +1226,14 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 103,
+      "ms": 142,
       "detail": "ok",
       "data": {
         "success": true,
-        "messageId": "msg-1784568221656-vg2bnd",
+        "messageId": "msg-1790540719090-lyowz8",
         "recipients": 2,
         "priority": "normal",
-        "broadcastAt": "2026-07-20T17:23:41.656Z"
+        "broadcastAt": "2026-09-27T20:25:19.090Z"
       }
     },
     {
@@ -1149,32 +1241,32 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 106,
+      "ms": 161,
       "detail": "ok",
       "data": {
-        "hiveId": "hive-1784568220804",
+        "hiveId": "hive-1790540717830",
         "status": "active",
         "topology": "hierarchical",
         "consensus": "raft",
         "queen": {
-          "id": "bench-mrthua56-queen",
-          "agentId": "bench-mrthua56-queen",
+          "id": "bench-muk9plf6-queen",
+          "agentId": "bench-muk9plf6-queen",
           "status": "active",
           "load": 0,
           "tasksQueued": 0,
-          "electedAt": "2026-07-20T17:23:40.804Z",
+          "electedAt": "2026-09-27T20:25:17.830Z",
           "term": 1
         },
         "workers": [
           {
-            "id": "bench-mrthua56-w-1784568220906-4zxu",
+            "id": "bench-muk9plf6-w-1790540717994-wm2b",
             "type": "coder",
             "status": "idle",
             "currentTask": null,
             "tasksCompleted": 0
           },
           {
-            "id": "bench-mrthua56-w-1784568220906-nwxf",
+            "id": "bench-muk9plf6-w-1790540717994-hcld",
             "type": "coder",
             "status": "idle",
             "currentTask": null,
@@ -1197,28 +1289,28 @@
           "consensus": "healthy",
           "memory": "healthy"
         },
-        "id": "hive-1784568220804",
+        "id": "hive-1790540717830",
         "initialized": true,
         "workerCount": 2,
         "pendingConsensus": 1,
         "sharedMemoryKeys": 2,
-        "uptime": 958,
-        "createdAt": "2026-07-20T17:23:40.804Z",
-        "updatedAt": "2026-07-20T17:23:41.656Z",
+        "uptime": 1420,
+        "createdAt": "2026-09-27T20:25:17.830Z",
+        "updatedAt": "2026-09-27T20:25:19.090Z",
         "workerDetails": [
-          "bench-mrthua56-w-1784568220906-4zxu",
-          "bench-mrthua56-w-1784568220906-nwxf"
+          "bench-muk9plf6-w-1790540717994-wm2b",
+          "bench-muk9plf6-w-1790540717994-hcld"
         ],
         "consensusHistory": [],
         "sharedMemory": {
-          "bench-mrthua56-shared": "hive-shared-knowledge",
+          "bench-muk9plf6-shared": "hive-shared-knowledge",
           "broadcasts": [
             {
-              "messageId": "msg-1784568221656-vg2bnd",
-              "message": "bench broadcast bench-mrthua56",
+              "messageId": "msg-1790540719090-lyowz8",
+              "message": "bench broadcast bench-muk9plf6",
               "priority": "normal",
-              "fromId": "bench-mrthua56-queen",
-              "timestamp": "2026-07-20T17:23:41.656Z"
+              "fromId": "bench-muk9plf6-queen",
+              "timestamp": "2026-09-27T20:25:19.090Z"
             }
           ]
         }
@@ -1229,7 +1321,7 @@
       "domain": "hive-mind",
       "critical": false,
       "ok": true,
-      "ms": 106,
+      "ms": 146,
       "detail": "ok",
       "data": {
         "optimized": false,
@@ -1252,14 +1344,14 @@
       "domain": "hive-mind",
       "critical": true,
       "ok": true,
-      "ms": 106,
+      "ms": 150,
       "detail": "ok",
       "data": {
         "success": true,
-        "shutdownAt": "2026-07-20T17:23:41.975Z",
+        "shutdownAt": "2026-09-27T20:25:19.546Z",
         "graceful": true,
         "workersTerminated": 2,
-        "previousQueen": "bench-mrthua56-queen",
+        "previousQueen": "bench-muk9plf6-queen",
         "consensusCleared": 1,
         "message": "Hive-mind shutdown complete. 2 workers terminated."
       }
@@ -1269,18 +1361,19 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 238,
+      "ms": 317,
       "detail": "ok",
       "data": {
         "success": true,
-        "key": "bench-mrthua56-pattern",
+        "key": "bench-muk9plf6-pattern",
         "namespace": "bench-conformance",
         "stored": true,
-        "storedAt": "2026-07-20T17:23:42.210Z",
+        "storedAt": "2026-09-27T20:25:19.864Z",
         "hasEmbedding": true,
         "embeddingDimensions": 384,
-        "backend": "sql.js + HNSW",
-        "storeTime": "111.34ms"
+        "provenanceType": "unknown",
+        "backend": "sqlite (bridge, brute-force cosine)",
+        "storeTime": "149.49ms"
       }
     },
     {
@@ -1288,19 +1381,23 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 226,
+      "ms": 314,
       "detail": "ok",
       "data": {
-        "key": "bench-mrthua56-pattern",
+        "key": "bench-muk9plf6-pattern",
         "namespace": "bench-conformance",
         "value": "Grok host learning loop: hierarchical swarm + team bus + hive consensus pattern for multi-agent coding",
-        "tags": [],
-        "storedAt": 1784568222210,
-        "updatedAt": 1784568222210,
+        "tags": [
+          "bench",
+          "grok",
+          "learning"
+        ],
+        "storedAt": 1790540719847,
+        "updatedAt": 1790540719863,
         "accessCount": 1,
         "hasEmbedding": true,
         "found": true,
-        "backend": "sql.js + HNSW"
+        "backend": "sqlite (bridge, brute-force cosine)"
       }
     },
     {
@@ -1308,20 +1405,21 @@
       "domain": "learning",
       "critical": false,
       "ok": true,
-      "ms": 224,
+      "ms": 286,
       "detail": "hits=1",
       "data": {
         "query": "multi-agent coding team bus hierarchical swarm",
         "results": [
           {
-            "key": "bench-mrthua56-pattern",
+            "key": "bench-muk9plf6-pattern",
             "namespace": "bench-conformance",
             "value": "Grok host learning loop: hierarchical swarm + team bus + hiv...",
-            "similarity": 0.647655255281246
+            "similarity": 0.647655255281246,
+            "provenanceType": "unknown"
           }
         ],
         "total": 1,
-        "searchTime": "97.16ms",
+        "searchTime": "127.87ms",
         "backend": "HNSW + sql.js"
       }
     },
@@ -1330,15 +1428,20 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 226,
+      "ms": 295,
       "detail": "ok",
       "data": {
         "entries": [
           {
-            "key": "bench-mrthua56-pattern",
+            "key": "bench-muk9plf6-pattern",
             "namespace": "bench-conformance",
-            "storedAt": 1784568222210,
-            "updatedAt": 1784568222210,
+            "tags": [
+              "bench",
+              "grok",
+              "learning"
+            ],
+            "storedAt": 1790540719847,
+            "updatedAt": 1790540719863,
             "accessCount": 1,
             "hasEmbedding": true,
             "size": 102
@@ -1347,7 +1450,7 @@
         "total": 1,
         "limit": 20,
         "offset": 0,
-        "backend": "sql.js + HNSW"
+        "backend": "sqlite (bridge, brute-force cosine)"
       }
     },
     {
@@ -1355,21 +1458,23 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 229,
+      "ms": 319,
       "detail": "ok",
       "data": {
         "initialized": true,
-        "totalEntries": 15,
-        "entriesWithEmbeddings": 12,
-        "embeddingCoverage": "80.0%",
+        "totalEntries": 21,
+        "entriesCounted": 21,
+        "entriesWithEmbeddings": 18,
+        "embeddingCoverage": "85.7%",
         "namespaces": {
           "bench-conformance": 1,
           "hive-memory": 4,
           "causal-edges": 3,
           "feedback": 3,
-          "patterns": 4
+          "default": 2,
+          "commands": 8
         },
-        "backend": "sql.js + HNSW",
+        "backend": "sqlite (bridge, brute-force cosine)",
         "version": "3.0.0",
         "features": {
           "vectorEmbeddings": true,
@@ -1383,10 +1488,10 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 240,
+      "ms": 294,
       "detail": "ok",
       "data": {
-        "taskId": "bench-mrthua56-task",
+        "taskId": "bench-muk9plf6-task",
         "description": "Implement hierarchical multi-agent coding workflow with learning",
         "suggestedAgents": [
           {
@@ -1417,12 +1522,12 @@
           "handler": "sonnet",
           "model": "sonnet",
           "complexity": 0.35181224489795915,
-          "confidence": 0.6979907432888153,
+          "confidence": 0.7116621717318984,
           "estimatedLatencyMs": 2000,
           "estimatedCost": 0.003,
           "recommendation": "[TASK_MODEL_RECOMMENDATION] Use model=\"sonnet\" for this task"
         },
-        "timestamp": "2026-07-20T17:23:43.357Z"
+        "timestamp": "2026-09-27T20:25:21.375Z"
       }
     },
     {
@@ -1430,15 +1535,15 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 245,
+      "ms": 612,
       "detail": "ok",
       "data": {
         "task": "Implement hierarchical multi-agent coding workflow with learning",
         "routing": {
-          "method": "semantic-pure-js",
-          "backend": "pure JS (cosine similarity)",
-          "latencyMs": 0.7639170000000206,
-          "throughput": "1309 routes/s"
+          "method": "semantic-native",
+          "backend": "native VectorDb (HNSW)",
+          "latencyMs": 0.11166599999990012,
+          "throughput": "8955 routes/s"
         },
         "matchedPattern": "feature-task",
         "semanticMatches": [
@@ -1485,7 +1590,8 @@
             "tester"
           ],
           "coordination": "queen-led"
-        }
+        },
+        "embedder": "hash"
       }
     },
     {
@@ -1493,26 +1599,30 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 260,
+      "ms": 369,
       "detail": "ok",
       "data": {
-        "taskId": "bench-mrthua56-task",
+        "taskId": "bench-muk9plf6-task",
         "success": true,
-        "duration": 120,
+        "duration": 203,
         "learningUpdates": {
-          "patternsUpdated": 1,
-          "newPatterns": 1,
-          "trajectoryId": "traj-1784568223830",
-          "controller": "bridge-store",
-          "outcomePersisted": false
+          "patternsUpdated": 2,
+          "newPatterns": null,
+          "trajectoryId": null,
+          "controller": "intelligence+bridge-store",
+          "outcomePersisted": false,
+          "available": true
+        },
+        "trajectory": {
+          "recorded": true
         },
         "quality": 0.9,
         "feedback": {
           "recorded": true,
-          "controller": "bridge-store",
-          "updates": 1
+          "controller": "intelligence+bridge-store",
+          "updates": 2
         },
-        "timestamp": "2026-07-20T17:23:43.830Z"
+        "timestamp": "2026-09-27T20:25:22.355Z"
       }
     },
     {
@@ -1520,9 +1630,13 @@
       "domain": "learning",
       "critical": true,
       "ok": true,
-      "ms": 118,
+      "ms": 251,
       "detail": "ok",
       "data": {
+        "training": {
+          "attempted": false,
+          "trained": false
+        },
         "mode": "balanced",
         "status": "active",
         "components": {
@@ -1576,25 +1690,28 @@
             "note": "Real ONNX embeddings via Xenova/all-MiniLM-L6-v2"
           },
           "ruvllmCoordinator": {
-            "status": "unavailable",
+            "status": "active",
             "trajectories": 0,
-            "note": "@ruvector/ruvllm not loaded"
+            "note": "SonaCoordinator forwarding trajectories"
           },
           "contrastiveTrainer": {
-            "status": "unavailable",
-            "details": "unavailable",
-            "note": "@ruvector/ruvllm not loaded"
+            "status": "active",
+            "details": {
+              "triplets": 0,
+              "agents": 0
+            },
+            "note": "Agent embedding learning active"
           },
           "trainingPipeline": {
-            "status": "js-fallback",
-            "note": "JS fallback"
+            "status": "ruvllm",
+            "note": "Checkpoint save/load via ruvllm"
           },
           "graphDatabase": {
-            "status": "unavailable",
+            "status": "graph-node",
             "totalNodes": 0,
             "totalEdges": 0,
             "avgDegree": 0,
-            "note": "@ruvector/graph-node not loaded"
+            "note": "Native Rust graph with hyperedges and k-hop queries"
           }
         },
         "realMetrics": {
@@ -1604,6 +1721,10 @@
           },
           "patterns": {
             "learned": 0,
+            "successful": 0,
+            "failed": 0,
+            "unknown": 0,
+            "described": 0,
             "categories": {}
           },
           "memory": {
@@ -1646,15 +1767,15 @@
       "domain": "learning",
       "critical": false,
       "ok": true,
-      "ms": 233,
+      "ms": 369,
       "detail": "ok",
       "data": {
         "success": true,
-        "key": "bench-mrthua56-pattern",
+        "key": "bench-muk9plf6-pattern",
         "namespace": "bench-conformance",
         "deleted": true,
         "hnswIndexInvalidated": true,
-        "backend": "sql.js + HNSW"
+        "backend": "sqlite (bridge, brute-force cosine)"
       }
     },
     {
@@ -1662,21 +1783,21 @@
       "domain": "neural",
       "critical": true,
       "ok": true,
-      "ms": 517,
+      "ms": 713,
       "detail": "ok",
       "data": {
         "_realEmbeddings": true,
         "embeddingProvider": "@claude-flow/embeddings (ruvector@0.2.27 (bundled all-MiniLM-L6-v2))",
         "models": {
-          "total": 3,
-          "ready": 3,
+          "total": 7,
+          "ready": 7,
           "training": 0,
-          "avgAccuracy": 0.6666666666666666
+          "avgAccuracy": 0.8571428571428571
         },
         "patterns": {
-          "total": 2,
+          "total": 6,
           "byType": {
-            "classifier": 2
+            "classifier": 6
           },
           "totalEmbeddingDims": 384
         },
@@ -1693,20 +1814,20 @@
       "domain": "neural",
       "critical": true,
       "ok": true,
-      "ms": 715,
+      "ms": 919,
       "detail": "ok",
       "data": {
         "success": true,
         "_realEmbedding": true,
         "_embeddingSource": "ruvector@0.2.27 (bundled all-MiniLM-L6-v2)",
         "embeddingProvider": "ruvector@0.2.27 (bundled all-MiniLM-L6-v2)",
-        "modelId": "model-1784568224833-eogj",
+        "modelId": "model-1790540723869-4sp5",
         "type": "classifier",
         "status": "ready",
         "patternsStored": 1,
-        "totalPatterns": 3,
+        "totalPatterns": 7,
         "epochs": 1,
-        "trainedAt": "2026-07-20T17:23:45.440Z"
+        "trainedAt": "2026-09-27T20:25:24.598Z"
       }
     },
     {
@@ -1714,7 +1835,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 85,
+      "ms": 156,
       "detail": "help ok"
     },
     {
@@ -1722,7 +1843,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 85,
+      "ms": 148,
       "detail": "help ok"
     },
     {
@@ -1730,7 +1851,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 88,
+      "ms": 141,
       "detail": "help ok"
     },
     {
@@ -1738,7 +1859,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 88,
+      "ms": 121,
       "detail": "help ok"
     },
     {
@@ -1746,7 +1867,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 88,
+      "ms": 137,
       "detail": "help ok"
     },
     {
@@ -1754,7 +1875,7 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 84,
+      "ms": 128,
       "detail": "help ok"
     },
     {
@@ -1762,16 +1883,16 @@
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 2543,
-      "detail": "exit=1"
+      "ms": 698,
+      "detail": "exit=0"
     },
     {
       "id": "cli:init-grok",
       "domain": "cli",
       "critical": true,
       "ok": true,
-      "ms": 103,
-      "detail": "scaffold → /var/folders/1r/9rdx7_456zdc5t2rc1plvw7m0000gn/T/ruflo-grok-init-bench-mrthua56"
+      "ms": 161,
+      "detail": "scaffold → /var/folders/1r/9rdx7_456zdc5t2rc1plvw7m0000gn/T/ruflo-grok-init-bench-muk9plf6"
     },
     {
       "id": "cli:init-grok-home",
