@@ -403,7 +403,7 @@ export const CAPABILITY_DOMAINS: readonly CapabilityDomainDefinition[] = [
   {
     id: 'swarm-coordination',
     name: 'Swarm & Coordination',
-    prefixes: ['swarm_', 'coordination_', 'daa_'],
+    prefixes: ['swarm_', 'coordination_', 'daa_', 'team_'],
     description: 'Topology-aware multi-agent coordination, task ownership, and collective scheduling.',
     taskSignals: ['swarm', 'concurrent', 'parallel', 'coordinate', 'multi-agent'],
     commands: ['swarm init', 'swarm status', 'swarm coordinate'],
