@@ -115,7 +115,7 @@ async function resolveCodexInitializer(cwd: string): Promise<CodexInitializerCto
 // package, the current project, or the global npm prefix.
 export function runCodexInitializerCli(
   cwd: string,
-  options: { template: string; force: boolean; dual: boolean },
+  options: { template: string; force: boolean; dual: boolean; teamHooks?: boolean },
 ): boolean {
   const npxArgs = [
     '-y',
@@ -125,6 +125,7 @@ export function runCodexInitializerCli(
     options.template,
     ...(options.force ? ['--force'] : []),
     ...(options.dual ? ['--dual'] : []),
+    ...(options.teamHooks ? ['--team-hooks'] : []),
   ];
 
   const result = process.platform === 'win32'
@@ -466,9 +467,9 @@ async function initGrokAction(
 // Codex initialization action
 async function initCodexAction(
   ctx: CommandContext,
-  options: { codexMode: boolean; dualMode: boolean; force: boolean; minimal: boolean; full: boolean }
+  options: { codexMode: boolean; dualMode: boolean; force: boolean; minimal: boolean; full: boolean; teamHooks?: boolean }
 ): Promise<CommandResult> {
-  const { force, minimal, full, dualMode } = options;
+  const { force, minimal, full, dualMode, teamHooks } = options;
 
   output.writeln();
   output.writeln(output.bold('Initializing RuFlo V3 for OpenAI Codex'));
@@ -486,7 +487,7 @@ async function initCodexAction(
     if (!CodexInitializer) {
       spinner.stop();
       output.printInfo('Fetching the stable Codex adapter for this initialization...');
-      const success = runCodexInitializerCli(ctx.cwd, { template, force, dual: dualMode });
+      const success = runCodexInitializerCli(ctx.cwd, { template, force, dual: dualMode, teamHooks });
       if (!success) {
         output.printError('Codex initialization failed while running @claude-flow/codex@latest.');
         return { success: false, exitCode: 1 };
@@ -501,6 +502,7 @@ async function initCodexAction(
       template: template as 'minimal' | 'default' | 'full' | 'enterprise',
       force,
       dual: dualMode,
+      teamHooks,
     });
 
     if (!result.success) {
@@ -555,6 +557,7 @@ async function initCodexAction(
       `Review ${output.highlight('AGENTS.md')} for project instructions`,
       `Add skills with ${output.highlight('$skill-name')} syntax`,
       `Configure ${output.highlight('.agents/config.toml')} for your project`,
+      `Teams: ${output.highlight('ruflo team run')}; see AGENTS.md → Agent Teams`,
       dualMode ? `Claude Code users can use ${output.highlight('CLAUDE.md')}` : '',
     ].filter(Boolean));
 
@@ -985,6 +988,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const codexMode = ctx.flags.codex as boolean;
   const dualMode = ctx.flags.dual as boolean;
   const grokMode = ctx.flags.grok as boolean;
+  const teamHooks = ctx.flags.teamHooks === true;
 
   // Grok Build host (ADR-402) — separate surface under .grok/
   if (grokMode) {
@@ -992,7 +996,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   }
 
   if (codexMode && !dualMode) {
-    return initCodexAction(ctx, { codexMode, dualMode: false, force, minimal, full });
+    return initCodexAction(ctx, { codexMode, dualMode: false, force, minimal, full, teamHooks });
   }
   if (!dualMode) {
     return initClaudeAction(ctx);
@@ -1018,6 +1022,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
     force,
     minimal,
     full,
+    teamHooks,
   });
   if (!codexResult.success) {
     return {
@@ -1779,6 +1784,12 @@ export const initCommand: Command = {
     {
       name: 'dual',
       description: 'Initialize for both Claude Code and OpenAI Codex',
+      type: 'boolean',
+      default: false,
+    },
+    {
+      name: 'team-hooks',
+      description: 'With --codex/--dual: add a SubagentStop hook for Agent Teams to .codex/hooks.json (needs /hooks trust)',
       type: 'boolean',
       default: false,
     },

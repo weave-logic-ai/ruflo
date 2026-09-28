@@ -32,6 +32,60 @@ export function resolveBundledSkillsPath(moduleUrl = import.meta.url): string {
   return path.resolve(path.dirname(fileURLToPath(moduleUrl)), BUNDLED_SKILLS_DIR);
 }
 
+export const TEAM_HOOK_MARKER = 'team hook-stop';
+
+/** The SubagentStop hook command for Codex (Windows goes through cmd /c). */
+export function teamStopHookCommand(platform: NodeJS.Platform = process.platform): string {
+  const base = 'npx -y ruflo@latest team hook-stop --host codex';
+  return platform === 'win32' ? `cmd /c ${base}` : base;
+}
+
+export interface TeamStopHookMergeResult {
+  added: boolean;
+  path: string;
+}
+
+/**
+ * Merge one SubagentStop entry that calls `ruflo team hook-stop --host codex`
+ * into the project's .codex/hooks.json. Idempotent: nothing is added when an
+ * existing command already contains `team hook-stop`. Existing entries are
+ * never removed or reordered. Never touches ~/.codex/config.toml.
+ */
+export async function mergeTeamStopHook(
+  projectPath: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<TeamStopHookMergeResult> {
+  const file = path.join(projectPath, '.codex', 'hooks.json');
+  let doc: { hooks?: Record<string, unknown> } = { hooks: {} };
+  if (await fs.pathExists(file)) {
+    const raw = await fs.readFile(file, 'utf-8');
+    const parsed = raw.trim() ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('.codex/hooks.json must contain a JSON object');
+    }
+    doc = parsed;
+  }
+  if (!doc.hooks || typeof doc.hooks !== 'object' || Array.isArray(doc.hooks)) doc.hooks = {};
+  const hooks = doc.hooks as Record<string, unknown>;
+  const groups = Array.isArray(hooks.SubagentStop) ? (hooks.SubagentStop as unknown[]) : [];
+
+  const present = JSON.stringify(groups).includes(TEAM_HOOK_MARKER);
+  if (present) return { added: false, path: file };
+
+  groups.push({ hooks: [{ type: 'command', command: teamStopHookCommand(platform), timeout: 30 }] });
+  hooks.SubagentStop = groups;
+  await fs.ensureDir(path.dirname(file));
+  await fs.writeFile(file, JSON.stringify(doc, null, 2) + '\n', 'utf-8');
+  return { added: true, path: file };
+}
+
+const TEAM_HOOK_TRUST_MESSAGE = [
+  '',
+  'ACTION REQUIRED (Agent Teams stop hook): start a new Codex session, open /hooks,',
+  'review the SubagentStop entry that runs `ruflo team hook-stop --host codex`, and trust it.',
+  'It stays inactive until you do. `ruflo team run` does not need this hook.',
+].join('\n');
+
 /**
  * Main initializer for Codex projects
  */
@@ -41,6 +95,7 @@ export class CodexInitializer {
   private skills: string[] = [];
   private force: boolean = false;
   private dual: boolean = false;
+  private teamHooks: boolean = false;
   private bundledSkillsPath: string = '';
 
   /**
@@ -52,6 +107,7 @@ export class CodexInitializer {
     this.skills = options.skills ?? DEFAULT_SKILLS_BY_TEMPLATE[this.template];
     this.force = options.force ?? false;
     this.dual = options.dual ?? false;
+    this.teamHooks = options.teamHooks ?? false;
 
     // Resolve bundled skills path (relative to this file's location)
     this.bundledSkillsPath = resolveBundledSkillsPath();
@@ -196,6 +252,20 @@ export class CodexInitializer {
         // Surfaced as a warning so it prints prominently. Codex deliberately
         // does NOT auto-trust new command hooks — the user must review them.
         warnings.push(pluginResult.activationMessage);
+      }
+
+      // Opt-in native Codex subagent stop hook for Agent Teams. The default
+      // `ruflo team run` path needs no hook.
+      if (this.teamHooks) {
+        try {
+          const merged = await mergeTeamStopHook(this.projectPath);
+          if (merged.added) {
+            filesCreated.push('.codex/hooks.json (SubagentStop team hook)');
+            warnings.push(TEAM_HOOK_TRUST_MESSAGE);
+          }
+        } catch (err) {
+          warnings.push(`Could not merge the team stop hook: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       // If dual mode, also generate Claude Code files
@@ -884,6 +954,10 @@ Enable verbose logging for development.
     if (options.dual) {
       files.push('CLAUDE.md');
       files.push('CLAUDE.local.md');
+    }
+
+    if (options.teamHooks) {
+      files.push('.codex/hooks.json');
     }
 
     return files;
