@@ -1071,7 +1071,9 @@ function renderMarkdown(report) {
   for (const r of report.results) {
     const st = r.ok ? 'PASS' : r.critical ? 'FAIL' : 'WARN';
     lines.push(
-      `| ${st} | ${r.domain} | \`${r.id}\` | ${r.ms} | ${String(r.detail).replace(/\|/g, '\\|')} |`,
+      `| ${st} | ${r.domain} | \`${r.id}\` | ${r.ms} | ${String(r.detail)
+        .replace(/\\/g, '\\\\')
+        .replace(/\|/g, '\\|')} |`,
     );
   }
   lines.push('');
