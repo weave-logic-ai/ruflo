@@ -37,7 +37,9 @@ function activeTeam() {
       return false;
     }
   });
-  return names[0] || null;
+  // With several active teams and none named, do nothing rather than
+  // advance the wrong team's plan.
+  return names.length === 1 ? names[0] : null;
 }
 
 const raw = await readStdin();
@@ -48,7 +50,7 @@ try {
   input = {};
 }
 
-const agent =
+const label =
   process.env.SUBAGENT_NAME
   || input.subagentName
   || input.agentName
@@ -56,6 +58,9 @@ const agent =
   || input.description
   || input.toolInput?.description
   || 'unknown';
+
+// Grok's spawn description is `role:agent`; the team member is `agent`.
+const agent = String(label).slice(String(label).lastIndexOf(':') + 1).trim();
 
 const team =
   process.env.TEAM_NAME
@@ -65,7 +70,7 @@ const team =
 
 if (team && fs.existsSync(bus)) {
   try {
-    spawnSync(process.execPath, [bus, 'on-stop', '--team', String(team), '--agent', String(agent).replace(/\s+/g, '-').slice(0, 64)], {
+    spawnSync(process.execPath, [bus, 'on-stop', '--team', String(team), '--agent', agent.replace(/\s+/g, '-').slice(0, 64)], {
       cwd: projectRoot,
       timeout: 4000,
       stdio: 'ignore',

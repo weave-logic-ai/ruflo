@@ -1,0 +1,11 @@
+{
+  "id": "msg_1782864000000_abc123",
+  "teamId": "legacy",
+  "from": "architect",
+  "to": "developer",
+  "summary": "design",
+  "content": "Use layered architecture",
+  "type": "handoff",
+  "priority": 2,
+  "timestamp": "2026-07-01T00:00:03.000Z"
+}

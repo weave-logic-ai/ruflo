@@ -1,259 +1,95 @@
 /**
- * Host-agnostic Agent Teams MCP tools (ADR-402).
+ * Host-agnostic Agent Teams MCP tools (ADR-320).
  *
  * Comms live in Ruflo (filesystem under .claude-flow/), not host SendMessage.
- * team_spawn returns a host spawn plan (Grok spawn_subagent / Claude Task adapter).
+ * team_spawn returns a spawn plan per host; each host's entry comes from its
+ * adapter in ./team-hosts/ (Grok, Claude, Codex, or a command host).
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-  renameSync,
-} from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readdirSync, renameSync } from 'node:fs';
+import { join } from 'node:path';
 import { type MCPTool, getProjectCwd } from './types.js';
-import { validateIdentifier, validateText } from './validate-input.js';
+import { validateText } from './validate-input.js';
+import {
+  normalizeAgentLabel,
+  resolveHost,
+  roleDefaults,
+  TeamHostsError,
+  type SpawnContext,
+  type TeamHostAdapter,
+} from './team-hosts/index.js';
+import {
+  ensureDir,
+  listMailboxFiles,
+  loadTeam,
+  mailboxRoot,
+  normalizeStep,
+  nowIso,
+  readJson,
+  safeName,
+  saveTeam,
+  teamDir,
+  teamPath,
+  withTeamLock,
+  writeJson,
+  type TeamMessage,
+  type TeamState,
+} from './team-store.js';
 
-const TEAMS_DIR = join('.claude-flow', 'teams');
-const MAILBOX_DIR = join('.claude-flow', 'swarm', 'mailbox');
+export {
+  TEAM_SCHEMA_VERSION,
+  type PlanStep,
+  type TeamMember,
+  type TeamMessage,
+  type TeamState,
+} from './team-store.js';
 
-interface RoleDefaults {
-  capability_mode: string;
-  isolation: string;
-  subagent_type: string;
-  claudeTaskType?: string;
-}
+const RUN_ID_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
-const ROLE_DEFAULTS: Record<string, RoleDefaults> = {
-  researcher: {
-    capability_mode: 'read-only',
-    isolation: 'none',
-    subagent_type: 'explore',
-    claudeTaskType: 'researcher',
-  },
-  architect: {
-    capability_mode: 'read-only',
-    isolation: 'none',
-    subagent_type: 'plan',
-    claudeTaskType: 'system-architect',
-  },
-  developer: {
-    capability_mode: 'all',
-    isolation: 'worktree',
-    subagent_type: 'general-purpose',
-    claudeTaskType: 'coder',
-  },
-  coder: {
-    capability_mode: 'all',
-    isolation: 'worktree',
-    subagent_type: 'general-purpose',
-    claudeTaskType: 'coder',
-  },
-  tester: {
-    capability_mode: 'all',
-    isolation: 'worktree',
-    subagent_type: 'general-purpose',
-    claudeTaskType: 'tester',
-  },
-  reviewer: {
-    capability_mode: 'read-only',
-    isolation: 'none',
-    subagent_type: 'general-purpose',
-    claudeTaskType: 'reviewer',
-  },
-  security: {
-    capability_mode: 'read-only',
-    isolation: 'none',
-    subagent_type: 'general-purpose',
-    claudeTaskType: 'security-auditor',
-  },
-  coordinator: {
-    capability_mode: 'all',
-    isolation: 'none',
-    subagent_type: 'general-purpose',
-    claudeTaskType: 'coordinator',
-  },
-};
-
-interface TeamMember {
-  name: string;
-  role: string;
-  status: string;
-  registeredAt: string;
-  next?: string[];
-  spawn?: Record<string, unknown>;
-  lastStopAt?: string;
-}
-
-interface PlanStep {
-  id: string;
-  agent: string;
-  status: string;
-}
-
-interface TeamState {
-  id: string;
-  name: string;
-  topology: string;
-  maxAgents: number;
-  status: string;
-  createdAt: string;
-  host?: string;
-  members: Record<string, TeamMember>;
-  plan: { steps: PlanStep[]; index: number; updatedAt?: string };
-  shutdownAt?: string;
-}
-
-interface TeamMessage {
-  id: string;
-  teamId: string;
-  from: string;
-  to: string;
-  summary: string;
-  content: string;
-  type: string;
-  priority: number;
-  timestamp: string;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function ensureDir(p: string): void {
-  if (!existsSync(p)) {
-    mkdirSync(p, { recursive: true, mode: 0o700 });
-  }
-}
-
-function safeName(name: string, field = 'name'): { ok: true; value: string } | { ok: false; error: string } {
-  if (typeof name !== 'string' || !name.trim()) {
-    return { ok: false, error: `${field} is required` };
-  }
-  const v = validateIdentifier(name, field);
-  if (!v.valid) return { ok: false, error: v.error || `Invalid ${field}` };
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(name)) {
-    return { ok: false, error: `Invalid ${field} "${name}" — use alphanumeric, dash, underscore` };
-  }
-  return { ok: true, value: name };
-}
-
-function teamsRoot(): string {
-  return join(getProjectCwd(), TEAMS_DIR);
-}
-
-function mailboxRoot(): string {
-  return join(getProjectCwd(), MAILBOX_DIR);
-}
-
-function teamDir(teamName: string): string {
-  return join(teamsRoot(), teamName);
-}
-
-function teamPath(teamName: string): string {
-  return join(teamDir(teamName), 'team.json');
-}
-
-function readJson<T>(file: string): T | null {
-  try {
-    if (!existsSync(file)) return null;
-    return JSON.parse(readFileSync(file, 'utf-8')) as T;
-  } catch {
-    return null;
-  }
-}
-
-function writeJson(file: string, data: unknown): void {
-  ensureDir(dirname(file));
-  writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-}
-
-function loadTeam(teamName: string): TeamState | null {
-  return readJson<TeamState>(teamPath(teamName));
-}
-
-function saveTeam(team: TeamState): void {
-  writeJson(teamPath(team.name), team);
-}
-
-/** Spawn arguments Grok Build 1.0.41 actually accepts on spawn_subagent. */
-function grokSpawnArgs(role: string, agentName: string, isolation: string): Record<string, unknown> {
-  return {
-    description: `${role}:${agentName}`,
-    background: true,
-    isolation,
-  };
-}
-
-function roleConstraint(mode: string, isolation: string): string {
-  if (mode === 'read-only') {
-    return 'Constraint: do not create, edit, delete, or move files, and do not run commands that change the repo. Read, search, and report.';
-  }
-  if (isolation === 'worktree') {
-    return 'Constraint: Grok isolates your edits in a git worktree. Stay inside that worktree and report its path when you finish.';
-  }
-  return 'Constraint: report results to the team lead. Stay inside the files this task names.';
-}
-
-function buildSpawnPlan(
-  team: TeamState,
-  agentName: string,
-  role: string,
-  prompt: string,
-  next: string[],
-): Record<string, unknown> {
-  const defaults = ROLE_DEFAULTS[role] || ROLE_DEFAULTS.coder;
-  const spawn = grokSpawnArgs(role, agentName, defaults.isolation);
-  const protocol = [
-    `You are "${agentName}" (role: ${role}) on team "${team.name}".`,
-    'Grok Build 1.0.41 runs you as a general-purpose subagent. Nesting depth is 1: do not call spawn_subagent.',
-    roleConstraint(defaults.capability_mode, defaults.isolation),
-    'Host-agnostic Agent Teams bus (ADR-402). There is no Claude SendMessage tool.',
-    'Prefer Ruflo MCP team_send / team_inbox when available; CLI fallback:',
-    `  node scripts/grok-team-bus.mjs send --team ${team.name} --to <next> --summary "<short>" --message "<handoff>"`,
-    `Or store under memory namespace team:${team.name}.`,
-    next.length
-      ? `Primary next agent(s): ${next.join(', ')}`
-      : 'Report completion to the team lead (parent session).',
-    `Check inbox at start via team_inbox (team=${team.name}, agent=${agentName}).`,
+/** Shared, host-neutral protocol text plus the adapter's own lines. */
+function buildProtocol(ctx: SpawnContext, adapter: TeamHostAdapter): string {
+  const target = ctx.next.length ? ctx.next.join(', ') : 'the team lead';
+  const handoff = adapter.kind === 'exec'
+    ? `Your final reply is delivered to ${target} as your handoff. End with a complete summary of what you did and what ${target} needs next.`
+    : `Before you finish, send your handoff to ${target} with team_send. Your final reply goes to the lead.`;
+  return [
+    `You are "${ctx.agent}" (role: ${ctx.role}) on team "${ctx.team.name}".`,
+    ...adapter.protocolLines(ctx),
+    `Read your inbox first: team_inbox (team=${ctx.team.name}, agent=${ctx.agent}).`,
+    ctx.next.length ? `Next agent(s): ${ctx.next.join(', ')}` : 'Next: report completion to the team lead.',
+    handoff,
     '',
     'Task:',
-    prompt || `(No task body — wait for inbox / lead instructions for role ${role}.)`,
+    ctx.task || `(No task body — wait for inbox / lead instructions for role ${ctx.role}.)`,
   ].join('\n');
-
-  return {
-    teamId: team.id,
-    name: agentName,
-    role,
-    prompt: protocol,
-    next,
-    host: {
-      grok: {
-        // Checked against Grok Build 1.0.41. Pass `spawn` to spawn_subagent
-        // together with top-level `prompt`. Leave `advisory` on the plan.
-        contract: 'grok-build-1.0.41',
-        spawn,
-        advisory: {
-          capability_mode: defaults.capability_mode,
-          subagent_type: defaults.subagent_type,
-          note: 'Grok Build 1.0.41 does not take capability_mode or subagent_type on spawn_subagent. The child is general-purpose; the prompt carries the constraint. isolation is the enforced knob. .grok/agents/*.md are session profiles (grok --agent-profile), not spawn types.',
-        },
-      },
-      claude: {
-        taskType: defaults.claudeTaskType || role,
-        note: 'optional back-compat path via Task tool',
-      },
-    },
-  };
 }
 
-function listMailboxFiles(agent: string): string[] {
-  const dir = join(mailboxRoot(), agent);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
+/** Build spawnPlan.host[<label>] for every requested host. Throws TeamHostsError. */
+function buildSpawnPlan(
+  team: TeamState,
+  agent: string,
+  role: string,
+  task: string,
+  next: string[],
+  hostLabels: string[],
+  model?: string,
+): Record<string, unknown> {
+  const host: Record<string, Record<string, unknown>> = {};
+  for (const label of hostLabels) {
+    const { adapter, hostConfig } = resolveHost(label, getProjectCwd());
+    const ctx: SpawnContext = {
+      team, agent, role, defaults: roleDefaults(role), next, task, label, model, hostConfig,
+    };
+    host[label] = { ...adapter.plan(ctx), prompt: buildProtocol(ctx, adapter) };
+  }
+  const primary = team.host && host[team.host] ? team.host : hostLabels[0];
+  return { teamId: team.id, name: agent, role, prompt: host[primary].prompt, next, host };
+}
+
+function stringList(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
+  if (typeof raw === 'string') return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return [];
 }
 
 function okResult(data: Record<string, unknown>) {
@@ -264,11 +100,15 @@ function errResult(error: string) {
   return { success: false, error };
 }
 
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export const teamTools: MCPTool[] = [
   {
     name: 'team_create',
     description:
-      'Create a host-agnostic Agent Team (ADR-402). State under .claude-flow/teams/. Use when native SendMessage/Task teammate bus is wrong or unavailable (Grok, Codex, multi-host). Pair with team_spawn for spawn plans and team_send/team_inbox for handoffs.',
+      'Create a host-agnostic Agent Team (ADR-320). State under .claude-flow/teams/. Use when native SendMessage/Task teammate bus is wrong or unavailable (Grok, Codex, multi-host). Pair with team_spawn for spawn plans and team_send/team_inbox for handoffs.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -279,7 +119,10 @@ export const teamTools: MCPTool[] = [
           description: 'Team topology (hierarchical, mesh, star, ring)',
         },
         maxAgents: { type: 'number', description: 'Max members (1-50, default 8)' },
-        host: { type: 'string', description: 'Host label (grok, claude, codex)' },
+        host: {
+          type: 'string',
+          description: 'Default host label: grok, claude, codex, or a label from .claude-flow/team-hosts.json',
+        },
         force: { type: 'boolean', description: 'Overwrite existing team metadata' },
       },
       required: ['name'],
@@ -289,34 +132,40 @@ export const teamTools: MCPTool[] = [
       if (!sn.ok) return errResult(sn.error);
       const name = sn.value;
       const force = input.force === true;
-      const path = teamPath(name);
-      if (existsSync(path) && !force) {
-        return errResult(`Team "${name}" already exists (pass force=true to overwrite metadata carefully)`);
+      const host = (input.host as string) || 'grok';
+      try {
+        resolveHost(host, getProjectCwd());
+      } catch (err) {
+        return errResult(errMessage(err));
       }
 
-      ensureDir(teamDir(name));
-      ensureDir(join(teamDir(name), 'plan'));
-      ensureDir(mailboxRoot());
+      return withTeamLock(name, () => {
+        if (existsSync(teamPath(name)) && !force) {
+          return errResult(`Team "${name}" already exists (pass force=true to overwrite metadata carefully)`);
+        }
+        ensureDir(join(teamDir(name), 'plan'));
+        ensureDir(mailboxRoot());
 
-      const team: TeamState = {
-        id: name,
-        name,
-        topology: (input.topology as string) || 'hierarchical',
-        maxAgents: Math.min(Math.max(Number(input.maxAgents) || 8, 1), 50),
-        status: 'active',
-        createdAt: nowIso(),
-        host: (input.host as string) || 'grok',
-        members: {},
-        plan: { steps: [], index: 0 },
-      };
-      saveTeam(team);
-      return okResult({ action: 'create', team });
+        const team: TeamState = {
+          id: name,
+          name,
+          topology: (input.topology as string) || 'hierarchical',
+          maxAgents: Math.min(Math.max(Number(input.maxAgents) || 8, 1), 50),
+          status: 'active',
+          createdAt: nowIso(),
+          host,
+          members: {},
+          plan: { steps: [], index: 0 },
+        };
+        saveTeam(team);
+        return okResult({ action: 'create', team });
+      });
     },
   },
   {
     name: 'team_spawn',
     description:
-      'Register a teammate and return a host spawn plan (Grok spawn_subagent / Claude Task adapter) — does not execute the agent. Use when native Task has no way to register a teammate into the host-agnostic team roster (ADR-402); the host lead still spawns using the returned plan. Pair with team_create first.',
+      'Register a teammate and return a spawn plan per host (Grok spawn_subagent, Claude Task, Codex exec, or a command host from .claude-flow/team-hosts.json) — does not execute the agent; exec hosts run via `ruflo team run`. Use when native Task has no way to register a teammate into the host-agnostic team roster (ADR-320); the host lead still spawns using the returned plan. Pair with team_create first.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -330,6 +179,12 @@ export const teamTools: MCPTool[] = [
           description: 'Next agent name(s) for handoff',
           items: { type: 'string' },
         },
+        hosts: {
+          type: 'array',
+          description: 'Host labels to plan for (default: the team host plus claude)',
+          items: { type: 'string' },
+        },
+        model: { type: 'string', description: 'Optional model override for exec hosts that take one (codex -m)' },
       },
       required: ['team', 'agent'],
     },
@@ -338,34 +193,46 @@ export const teamTools: MCPTool[] = [
       if (!st.ok) return errResult(st.error);
       const sa = safeName(String(input.agent || ''), 'agent');
       if (!sa.ok) return errResult(sa.error);
-      const team = loadTeam(st.value);
-      if (!team) return errResult(`Team "${st.value}" not found — call team_create first`);
-
       const role = String(input.role || sa.value);
-      const nextRaw = input.next;
-      const next = Array.isArray(nextRaw)
-        ? nextRaw.map(String).map((s) => s.trim()).filter(Boolean)
-        : typeof nextRaw === 'string'
-          ? String(nextRaw).split(',').map((s) => s.trim()).filter(Boolean)
-          : [];
+      const next = stringList(input.next);
+      for (const n of next) {
+        const sn = safeName(n, 'next');
+        if (!sn.ok) return errResult(sn.error);
+      }
 
       if (input.prompt) {
         const tv = validateText(String(input.prompt), 'prompt', 100_000);
         if (!tv.valid) return errResult(tv.error || 'Invalid prompt');
       }
+      const model = input.model === undefined ? undefined : String(input.model);
 
-      const plan = buildSpawnPlan(team, sa.value, role, String(input.prompt || ''), next);
-      team.members[sa.value] = {
-        name: sa.value,
-        role,
-        status: 'registered',
-        registeredAt: nowIso(),
-        next,
-        spawn: plan.host as Record<string, unknown>,
-      };
-      saveTeam(team);
-      ensureDir(join(mailboxRoot(), sa.value));
-      return okResult({ action: 'spawn', spawnPlan: plan, teamId: team.id });
+      return withTeamLock(st.value, () => {
+        const { team, error } = loadTeam(st.value);
+        if (error) return errResult(error);
+        if (!team) return errResult(`Team "${st.value}" not found — call team_create first`);
+
+        const requested = stringList(input.hosts);
+        const hosts = [...new Set(requested.length ? requested : [team.host || 'grok', 'claude'])];
+        let plan: Record<string, unknown>;
+        try {
+          plan = buildSpawnPlan(team, sa.value, role, String(input.prompt || ''), next, hosts, model);
+        } catch (err) {
+          if (err instanceof TeamHostsError) return errResult(err.message);
+          throw err;
+        }
+        team.members[sa.value] = {
+          ...(team.members[sa.value] || {}),
+          name: sa.value,
+          role,
+          status: 'registered',
+          registeredAt: nowIso(),
+          next,
+          spawn: plan.host as Record<string, unknown>,
+        };
+        saveTeam(team);
+        ensureDir(join(mailboxRoot(), sa.value));
+        return okResult({ action: 'spawn', spawnPlan: plan, teamId: team.id });
+      });
     },
   },
   {
@@ -389,7 +256,8 @@ export const teamTools: MCPTool[] = [
     handler: async (input) => {
       const st = safeName(String(input.team || ''), 'team');
       if (!st.ok) return errResult(st.error);
-      const team = loadTeam(st.value);
+      const { team, error } = loadTeam(st.value);
+      if (error) return errResult(error);
       if (!team) return errResult(`Team "${st.value}" not found`);
 
       const to = String(input.to || '*');
@@ -402,10 +270,12 @@ export const teamTools: MCPTool[] = [
       const tv = validateText(content, 'message', 500_000);
       if (!tv.valid) return errResult(tv.error || 'Invalid message');
 
+      const from = String(input.from || 'lead');
+
       const msg: TeamMessage = {
         id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         teamId: team.id,
-        from: String(input.from || 'lead'),
+        from,
         to,
         summary: String(input.summary || ''),
         content,
@@ -522,9 +392,6 @@ export const teamTools: MCPTool[] = [
     handler: async (input) => {
       const st = safeName(String(input.team || ''), 'team');
       if (!st.ok) return errResult(st.error);
-      const team = loadTeam(st.value);
-      if (!team) return errResult(`Team "${st.value}" not found`);
-
       let stepsIn: unknown[] = [];
       if (Array.isArray(input.steps)) {
         stepsIn = input.steps;
@@ -536,21 +403,22 @@ export const teamTools: MCPTool[] = [
         }
       }
 
-      team.plan = {
-        steps: stepsIn.map((s, i) =>
-          typeof s === 'string'
-            ? { id: s, agent: s, status: i === 0 ? 'ready' : 'pending' }
-            : {
-                id: String((s as PlanStep).id || (s as PlanStep).agent || `step-${i}`),
-                agent: String((s as PlanStep).agent || (s as PlanStep).id || `step-${i}`),
-                status: i === 0 ? 'ready' : 'pending',
-              },
-        ),
-        index: 0,
-        updatedAt: nowIso(),
-      };
-      saveTeam(team);
-      return okResult({ action: 'plan', plan: team.plan });
+      return withTeamLock(st.value, () => {
+        const { team, error } = loadTeam(st.value);
+        if (error) return errResult(error);
+        if (!team) return errResult(`Team "${st.value}" not found`);
+        team.plan = {
+          steps: stepsIn.map((s, i) => {
+            const step = normalizeStep(s, i);
+            // A new plan always starts fresh, whatever status the input carried.
+            return { id: step.id, agent: step.agent, status: i === 0 ? 'ready' : 'pending' };
+          }),
+          index: 0,
+          updatedAt: nowIso(),
+        };
+        saveTeam(team);
+        return okResult({ action: 'plan', plan: team.plan });
+      });
     },
   },
   {
@@ -567,7 +435,8 @@ export const teamTools: MCPTool[] = [
     handler: async (input) => {
       const st = safeName(String(input.team || ''), 'team');
       if (!st.ok) return errResult(st.error);
-      const team = loadTeam(st.value);
+      const { team, error } = loadTeam(st.value);
+      if (error) return errResult(error);
       if (!team) return errResult(`Team "${st.value}" not found`);
 
       // Include registered members and any mailbox dirs (pre-spawn handoffs).
@@ -588,51 +457,84 @@ export const teamTools: MCPTool[] = [
   {
     name: 'team_on_stop',
     description:
-      'Mark agent idle, advance the team_plan pipeline, and return the next assignment hint. Use when native Task has no cross-host equivalent to SubagentStop-driven pipeline advancement; wire this from SubagentStop / post-task hooks instead of polling team_status.',
+      'Mark an agent stopped (done or failed), advance the team_plan pipeline on done, and return the next assignment hint. Use when native Task has no cross-host equivalent to SubagentStop-driven pipeline advancement; wire this from SubagentStop hooks or `ruflo team run` instead of polling team_status. A repeated runId is a no-op.',
     category: 'team',
     inputSchema: {
       type: 'object',
       properties: {
         team: { type: 'string', description: 'Team id' },
-        agent: { type: 'string', description: 'Agent that stopped' },
+        agent: { type: 'string', description: 'Agent that stopped (a "role:agent" label is accepted)' },
+        outcome: { type: 'string', description: 'done (default) or failed; failed does not advance the plan' },
+        runId: { type: 'string', description: 'Run id; a repeat for the same agent is ignored' },
+        reason: { type: 'string', description: 'Why the run failed (recorded on the member)' },
       },
       required: ['team', 'agent'],
     },
     handler: async (input) => {
       const st = safeName(String(input.team || ''), 'team');
       if (!st.ok) return errResult(st.error);
-      const sa = safeName(String(input.agent || ''), 'agent');
+      const sa = safeName(normalizeAgentLabel(String(input.agent || '')), 'agent');
       if (!sa.ok) return errResult(sa.error);
-      const team = loadTeam(st.value);
-      if (!team) return errResult(`Team "${st.value}" not found`);
+      const outcome = input.outcome === undefined ? 'done' : String(input.outcome);
+      if (outcome !== 'done' && outcome !== 'failed') return errResult('outcome must be "done" or "failed"');
+      const runId = input.runId === undefined ? undefined : String(input.runId);
+      if (runId !== undefined && !RUN_ID_RE.test(runId)) return errResult('Invalid runId');
+      const reason = input.reason === undefined ? undefined : String(input.reason).slice(0, 4000);
 
-      if (team.members[sa.value]) {
-        team.members[sa.value].status = 'idle';
-        team.members[sa.value].lastStopAt = nowIso();
-      }
+      return withTeamLock(st.value, () => {
+        const { team, error } = loadTeam(st.value);
+        if (error) return errResult(error);
+        if (!team) return errResult(`Team "${st.value}" not found`);
 
-      const plan = team.plan || { steps: [] as PlanStep[], index: 0 };
-      const cur = plan.steps[plan.index];
-      if (cur && (cur.agent === sa.value || cur.id === sa.value)) {
-        cur.status = 'done';
-        plan.index = Math.min(plan.index + 1, plan.steps.length);
-        const next = plan.steps[plan.index];
-        if (next) next.status = 'ready';
-      }
-      team.plan = plan;
-      saveTeam(team);
+        const member = team.members[sa.value];
+        if (member && runId && member.lastStopRunId === runId) {
+          return okResult({ action: 'on-stop', agent: sa.value, duplicate: true, runId });
+        }
+        if (member) {
+          member.status = outcome === 'failed' ? 'failed' : 'idle';
+          member.lastStopAt = nowIso();
+          if (runId) member.lastStopRunId = runId;
+          if (reason !== undefined) member.lastStopReason = reason;
+        }
 
-      const nextStep = plan.steps[plan.index];
-      return okResult({
-        action: 'on-stop',
-        agent: sa.value,
-        next: nextStep || null,
-        assign: nextStep
-          ? {
-              hint: `Spawn or resume agent "${nextStep.agent}" for the next plan step`,
-              agent: nextStep.agent,
-            }
-          : { hint: 'Plan complete — lead should synthesize' },
+        const plan = team.plan;
+        const cur = plan.steps[plan.index];
+        const isCurrent = !!cur && (cur.agent === sa.value || cur.id === sa.value);
+        if (isCurrent && outcome === 'failed') {
+          cur.status = 'failed';
+        } else if (isCurrent) {
+          cur.status = 'done';
+          plan.index = Math.min(plan.index + 1, plan.steps.length);
+          const next = plan.steps[plan.index];
+          if (next) next.status = 'ready';
+        }
+        saveTeam(team);
+
+        if (outcome === 'failed') {
+          return okResult({
+            action: 'on-stop',
+            agent: sa.value,
+            outcome,
+            next: isCurrent ? cur : plan.steps[plan.index] || null,
+            assign: {
+              hint: `Agent "${sa.value}" failed${reason ? ` (${reason.slice(0, 200)})` : ''}: retry with \`ruflo team run\` or reassign the step`,
+              agent: sa.value,
+            },
+          });
+        }
+        const nextStep = plan.steps[plan.index];
+        return okResult({
+          action: 'on-stop',
+          agent: sa.value,
+          outcome,
+          next: nextStep || null,
+          assign: nextStep
+            ? {
+                hint: `Spawn or resume agent "${nextStep.agent}" for the next plan step`,
+                agent: nextStep.agent,
+              }
+            : { hint: 'Plan complete — lead should synthesize' },
+        });
       });
     },
   },
@@ -650,15 +552,18 @@ export const teamTools: MCPTool[] = [
     handler: async (input) => {
       const st = safeName(String(input.team || ''), 'team');
       if (!st.ok) return errResult(st.error);
-      const team = loadTeam(st.value);
-      if (!team) return errResult(`Team "${st.value}" not found`);
-      team.status = 'shutdown';
-      team.shutdownAt = nowIso();
-      for (const m of Object.values(team.members || {})) {
-        m.status = 'shutdown';
-      }
-      saveTeam(team);
-      return okResult({ action: 'shutdown', teamId: team.id });
+      return withTeamLock(st.value, () => {
+        const { team, error } = loadTeam(st.value);
+        if (error) return errResult(error);
+        if (!team) return errResult(`Team "${st.value}" not found`);
+        team.status = 'shutdown';
+        team.shutdownAt = nowIso();
+        for (const m of Object.values(team.members || {})) {
+          m.status = 'shutdown';
+        }
+        saveTeam(team);
+        return okResult({ action: 'shutdown', teamId: team.id });
+      });
     },
   },
 ];

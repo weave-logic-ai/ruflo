@@ -1,0 +1,37 @@
+{
+  "id": "legacy",
+  "name": "legacy",
+  "topology": "hierarchical",
+  "maxAgents": 8,
+  "status": "active",
+  "createdAt": "2026-07-01T00:00:00.000Z",
+  "host": "grok",
+  "members": {
+    "architect": {
+      "name": "architect",
+      "role": "architect",
+      "status": "registered",
+      "registeredAt": "2026-07-01T00:00:01.000Z",
+      "next": ["developer"],
+      "spawn": {
+        "grok": {
+          "subagent_type": "ruflo-architect",
+          "capability_mode": "read-only",
+          "isolation": "none",
+          "background": true
+        },
+        "claude": { "taskType": "system-architect" }
+      },
+      "customNote": "kept by every writer"
+    }
+  },
+  "plan": {
+    "steps": [
+      { "agent": "architect" },
+      { "id": "developer", "agent": "developer" }
+    ],
+    "index": 0,
+    "updatedAt": "2026-07-01T00:00:02.000Z"
+  },
+  "extraTopLevel": { "owner": "legacy-script" }
+}
