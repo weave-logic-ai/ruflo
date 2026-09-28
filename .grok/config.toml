@@ -1,0 +1,59 @@
+# Ruflo on Grok Build — project-scoped host config
+# Loaded by Grok when this folder is trusted (see ~/.grok/trusted_folders.toml).
+#
+# Goal: full harness (MCP + hooks + skills + agent teams path), not a thin CLI wrapper.
+# See: .grok/rules/ruflo-grok.md and v3/docs/adr/ADR-402-host-agnostic-agent-teams.md
+#
+# After editing: restart Grok (or reload MCPs) so tool lists refresh.
+
+# ---------------------------------------------------------------------------
+# Ruflo MCP — LOCAL monorepo CLI (includes team_* before a published release).
+# Rebuild: cd v3 && pnpm --filter @claude-flow/cli... build
+# Relink shell CLI: npm link (from repo root) or scripts/use-local-ruflo.sh
+# Path is relative to the repo root, where Grok runs this config from.
+# After a published release with team_*, you may switch back to:
+#   command = "npx"
+#   args = ["-y", "ruflo@latest", "mcp", "start"]
+# ---------------------------------------------------------------------------
+[mcp_servers.ruflo]
+command = "node"
+args = ["v3/@claude-flow/cli/bin/cli.js", "mcp", "start"]
+enabled = true
+startup_timeout_sec = 120
+tool_timeout_sec = 180
+
+# ---------------------------------------------------------------------------
+# Optional: RuvNet Brain grounding (search_ruvnet over embedded rUv source)
+# Install: npx ruvnet-brain@latest  → kb under ~/.cache/ruvnet-brain/kb
+# KB_DIR is required — forge-mcp defaults to process.cwd() and fails in Grok.
+# Uncomment and point at your own kb directory to enable.
+# ---------------------------------------------------------------------------
+# [mcp_servers.ruvnet-brain]
+# command = "node"
+# args = ["{{HOME}}/.cache/ruvnet-brain/kb/forge-mcp-all.mjs"]
+# env = { KB_DIR = "{{HOME}}/.cache/ruvnet-brain/kb" }
+# enabled = true
+# startup_timeout_sec = 90
+# tool_timeout_sec = 600
+
+# ---------------------------------------------------------------------------
+# Permissions — allow Ruflo CLI + helpers without re-prompting every turn
+# (deny still wins over allow; PreToolUse hooks can still block)
+# ---------------------------------------------------------------------------
+[permission]
+allow = [
+  "Bash(npx ruflo*)",
+  "Bash(npx @claude-flow*)",
+  "Bash(npx claude-flow*)",
+  "Bash(node .claude/*)",
+  "Bash(npx -y ruflo*)",
+  "Bash(node scripts/grok-team-bus.mjs*)",
+  "Bash(ruflo*)",
+  "MCPTool(ruflo__*)",
+]
+
+# ---------------------------------------------------------------------------
+# Subagent defaults are user-level on Grok Build 1.0.41.
+# This file contributes [mcp_servers], [plugins], [permission], and
+# [mcp].max_output_bytes. A [subagents] table here is ignored.
+# ---------------------------------------------------------------------------
