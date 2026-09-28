@@ -110,6 +110,8 @@ interface CodexEvents {
   terminal?: 'turn.completed' | 'turn.failed';
   failure?: string;
   lastMessage?: string;
+  /** `server.tool` names of MCP calls the child made. */
+  mcpTools?: string[];
 }
 
 /** Read the `codex exec --json` stream. Lines that are not JSON are ignored. */
@@ -132,6 +134,9 @@ export function parseCodexEvents(stdout: string): CodexEvents {
     }
     if (ev.type === 'item.completed' && ev.item?.type === 'agent_message' && typeof ev.item.text === 'string') {
       out.lastMessage = ev.item.text;
+    }
+    if (ev.type === 'item.completed' && ev.item?.type === 'mcp_tool_call' && typeof ev.item.tool === 'string') {
+      (out.mcpTools ??= []).push(`${ev.item.server ?? '?'}.${ev.item.tool}`);
     }
   }
   return out;
@@ -263,6 +268,7 @@ export async function runTeamAgent(opts: TeamRunOptions): Promise<TeamRunResult>
     ...(reason ? { reason } : {}),
     resultFile: relative(root, resultFile),
     ...(events?.threadId ? { threadId: events.threadId } : {}),
+    ...(events ? { mcpTools: events.mcpTools ?? [] } : {}),
     warnings,
   });
 

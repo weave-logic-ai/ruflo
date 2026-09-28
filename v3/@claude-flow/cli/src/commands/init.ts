@@ -389,7 +389,7 @@ async function maybeInstallSkillsSh(ctx: CommandContext): Promise<void> {
   }
 }
 
-// Grok Build host initialization (ADR-402)
+// Grok Build host initialization (ADR-320)
 async function initGrokAction(
   ctx: CommandContext,
   options: { force: boolean }
@@ -426,10 +426,10 @@ async function initGrokAction(
         `.grok/rules/ruflo-grok.md — host doctrine / tool map`,
         `.grok/agents/ — ruflo-architect/coder/tester/reviewer`,
         `.grok/skills/ — agent-teams-grok`,
-        `scripts/grok-team-bus.mjs — ADR-402 team bus CLI MVP`,
+        `scripts/grok-team-bus.mjs — ADR-320 team bus CLI (calls ruflo team)`,
         `docs/grok/README.md — operator guide`,
       ].join('\n'),
-      'Grok Build Integration (ADR-402)'
+      'Grok Build Integration (ADR-320)'
     );
     output.writeln();
     output.printInfo(`Created: ${result.filesCreated.length}  Skipped (exists): ${result.filesSkipped.length}`);
@@ -990,7 +990,7 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const grokMode = ctx.flags.grok as boolean;
   const teamHooks = ctx.flags.teamHooks === true;
 
-  // Grok Build host (ADR-402) — separate surface under .grok/
+  // Grok Build host (ADR-320) — separate surface under .grok/
   if (grokMode) {
     return initGrokAction(ctx, { force });
   }
@@ -1777,7 +1777,7 @@ export const initCommand: Command = {
     },
     {
       name: 'grok',
-      description: 'Initialize for Grok Build host (creates .grok/, team bus scripts, ADR-402 surface)',
+      description: 'Initialize for Grok Build host (creates .grok/, team bus scripts, ADR-320 surface)',
       type: 'boolean',
       default: false,
     },
@@ -1831,7 +1831,7 @@ export const initCommand: Command = {
     { command: 'claude-flow init upgrade --verbose', description: 'Show detailed upgrade info' },
     { command: 'claude-flow init --codex', description: 'Initialize for OpenAI Codex (AGENTS.md)' },
     { command: 'claude-flow init --codex --full', description: 'Codex init with all canonical packaged skills' },
-    { command: 'claude-flow init --grok', description: 'Initialize for Grok Build (.grok/, team bus, ADR-402)' },
+    { command: 'claude-flow init --grok', description: 'Initialize for Grok Build (.grok/, team bus, ADR-320)' },
     { command: 'claude-flow init --grok --force', description: 'Overwrite existing Grok host files' },
     { command: 'claude-flow init --dual', description: 'Initialize for both Claude Code and Codex' },
     { command: 'claude-flow init --no-codex-detect', description: 'Skip auto-configuring OpenAI Codex even if it is installed' },

@@ -157,7 +157,7 @@ A **native-spawn host** spawns children itself. The lead calls the host's own sp
 
 An **exec host** is a CLI that runs one headless turn and exits. Ruflo runs it through `ruflo team run`, and the process exit is the stop signal. No hook, and no hook trust, is needed on that path. `codex exec` is an exec host. Any runtime with a command like `<bin> <flags> <prompt>` can be one through the command adapter.
 
-Codex is both. Native Codex subagents (`multi_agent`) are delegated by the lead model's prompt, not by a deterministic call, so the **primary Codex path is exec**. The native path is supported on a best-effort basis through a `SubagentStop` hook.
+Codex is both. Native Codex subagents (`multi_agent`) are delegated by the lead model's prompt, not by a deterministic call, so the **Codex stop signal is the runner's, and only the runner's, by default**: `ruflo team run` parses the `codex exec --json` event stream and the process exit (see Runner). Nothing is written to Codex's hook config or trust ledger by default. A `SubagentStop` hook for native Codex subagents is opt-in (`init --codex --team-hooks`). Codex records its own trust when the user approves it in `/hooks`, and Ruflo never writes that ledger.
 
 ### Host adapter seam
 
@@ -224,11 +224,14 @@ Any agent runtime can be a teammate without Ruflo knowing its name. Its project 
 
 `ruflo team run --team T --agent A [--host <label>] [--timeout ms] [--dry-run]` loads the member's stored plan and runs `exec` with bounded output and a timeout. When the process exits, the runner:
 
+0. decides the outcome. For a host whose plan sets `events: "codex-jsonl"`, the outcome is `done` when the last terminal event is `turn.completed` and the exit code is 0. It is `failed` on `turn.failed` (its `error` becomes `reason`), on a non-zero exit, or on a timeout. An exit 0 with no terminal event is `done` with the warning `noTerminalEvent`. For a plain exec host, the outcome is `done` if and only if the exit code is 0 and there was no timeout;
 1. writes `.claude-flow/teams/T/runs/A-<runId>.json` with the exit code, duration, the result file (or captured stdout), and the Codex thread id from `--json` when present;
-2. sends the final message with `team_send` (`type: "result"`) to each `next` agent, or to `lead` when there is none;
-3. calls `team_on_stop` with `outcome` (`done` on exit 0, otherwise `failed`) and `runId`.
+2. sends the final message with `team_send` (`type: "result"`) to each `next` agent, or to `lead` when there is none. A failed run goes to `lead` only, because the next step is not ready;
+3. calls `team_on_stop` with the `outcome` from step 0, `runId`, and `reason`.
 
 This is how the bus advances even when the child never calls a `team_*` tool itself. `--dry-run` prints the resolved argv and the names of passed env keys, then exits without starting the host.
+
+`ruflo team <create|spawn|send|inbox|broadcast|plan|status|on-stop|shutdown> --params '<json>'` calls the same handlers as the MCP tools, in-process, and prints their JSON result. It is the public, non-MCP interface for scripts and for hook shims.
 
 `ruflo team hook-stop --host <id>` is the entry point for native hooks. It reads the hook JSON from stdin, maps it through `adapter.stopIdentity`, calls `team_on_stop`, and always exits 0.
 
@@ -246,13 +249,23 @@ These reuse `@claude-flow/codex` and do not add a second generator:
 - **MCP:** the existing `registerMCPServer` already registers `ruflo` when it is missing. There is no change.
 - **AGENTS.md:** a new `renderTeamBusSection()` in `generators/agents-md.ts` covers when to use `team_*`, the lead loop (`team_create` → `team_plan` → `team_spawn` → `ruflo team run` → `team_status`), and the rule that a child reads `team_inbox` first and ends by replying with its handoff.
 - **Skill:** a packaged `agent-teams` skill under the codex package's `.agents/skills/`. It is added to `BUILT_IN_SKILLS` and to the `default` and `minimal` template defaults.
-- **Hook:** idempotently merge one `SubagentStop` entry into project `.codex/hooks.json` that calls `ruflo team hook-stop --host codex`. Existing entries are kept. init prints the `/hooks` trust step and never writes the `[hooks.state]` trust ledger in `~/.codex/config.toml`.
+- **Hook (opt-in, `--team-hooks`):** idempotently merge one `SubagentStop` entry into project `.codex/hooks.json` that calls `ruflo team hook-stop --host codex`. Existing entries are kept. init prints the `/hooks` trust step and never writes `~/.codex/config.toml`. Without the flag, init writes no hook, and exec teams work fully.
+
+### Canonical on-disk format and a single writer
+
+`.claude-flow/teams/<team>/team.json` and `.claude-flow/swarm/mailbox/<agent>/<priority>_<id>.json` are a public format. The `team_*` handlers in `team-tools.ts` are its only writer.
+
+- `team-tools.ts` exports the types `TeamState`, `TeamMember`, `PlanStep` and `TeamMessage`, and the constant `TEAM_SCHEMA_VERSION = 1`. `team.json` gains `schemaVersion`. A missing `schemaVersion` means the legacy (v0) layout the original CLI bus wrote, which is readable as is.
+- Reads normalize v0 data. A plan step object missing `id`, `agent` or `status` is filled from its index, the same rule `team_plan` applies. A member `spawn` without a `host` key (the flat v0 Grok plan) is kept but has no `exec` entry, so `team run` refuses it with "re-register with team_spawn". The first write stamps `schemaVersion: 1`.
+- A reader that sees a `schemaVersion` higher than it knows returns an error and does not write. An older tool therefore cannot corrupt a newer layout.
+- The shipped `templates/grok/scripts/grok-team-bus.mjs` becomes a shim. It maps its existing flags to `ruflo team <verb> --params`, resolving the `ruflo` binary the same way the `ruflo-core` hook shim does, and it keeps its CLI surface. It no longer writes files itself.
 
 ### Verification
 
+- **Format:** a checked-in v0 fixture (a team.json and mailbox as written by the original CLI bus) is read by `team_status`, advanced by `team_on_stop`, and rewritten with `schemaVersion: 1` without losing fields. `schemaVersion: 2` is refused. The Grok shim produces byte-identical `team.json` key sets to the MCP handlers for the same sequence of calls.
 - **Unit:** plan shape per adapter (Grok unchanged; Codex sandbox, worktree and stdin; command placeholder validation and rejections); `stopIdentity` for each adapter; `team_on_stop` failed and duplicate cases and `role:agent` normalization; the runner with a fake exec host (a node one-liner) covering the result file, the handoff message and the plan advance; the lock under concurrent stops.
 - **Bench:** `bench-grok-host-conformance.mjs` becomes a host bench driven by `--host grok|codex|command|all`. The existing script name stays as an alias. New domains are host plan contract, runner (fake host), and the Codex init product (AGENTS.md section, skill, hooks merge on a temp dir). No model calls.
-- **Live probe:** `probe-host-live.mjs` makes model turns opt-in. `--execute` runs one headless turn, and `--live` adds the team round-trip. Without either flag, no host process that calls a model is started. The Codex adapter's `execute` step is implemented with `codex exec --ephemeral`, and needs no hook trust. `--live --host codex` runs a two-step team (a read-only child and a lead check) and asserts the plan advanced through the runner.
+- **Live probe:** `probe-host-live.mjs` makes model turns opt-in. `--execute` runs one headless turn, and `--live` adds the team round-trip. Without either flag, no host process that calls a model is started. The Codex adapter's `execute` step is implemented with `codex exec --ephemeral`, and needs no hook trust. `--live --host codex` runs a two-step team (a read-only child and a lead check) and asserts the plan advanced through the runner. The outcome comes from `--json` events, not from a hook.
 
 ### Out of scope
 

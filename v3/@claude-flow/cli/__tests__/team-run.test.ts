@@ -3,8 +3,8 @@
  * `ruflo team hook-stop` team resolution. No model calls.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { teamTools } from '../src/mcp-tools/team-tools.js';
 import { runTeamAgent, hookStop, fillPlaceholders, parseCodexEvents } from '../src/mcp-tools/team-runner.js';
@@ -148,6 +148,74 @@ describe('team run (fake command host)', () => {
   });
 });
 
+describe('team run (fake codex on PATH)', () => {
+  let cwd: string;
+  let bin: string;
+  let prevCwd: string | undefined;
+  let prevPath: string | undefined;
+
+  function fakeCodex(lines: object[], exitCode = 0) {
+    const script = join(bin, 'codex');
+    const body = lines.map((l) => JSON.stringify(l)).join('\\n');
+    // Reads the prompt from stdin until EOF, then prints the JSONL stream.
+    writeFileSync(script, `#!${node}\nprocess.stdin.resume();process.stdin.on('end',()=>{process.stdout.write(${JSON.stringify(body)}.split('\\\\n').join('\\n')+'\\n');process.exit(${exitCode})});\n`);
+    chmodSync(script, 0o755);
+  }
+
+  beforeEach(async () => {
+    cwd = mkdtempSync(join(tmpdir(), 'ruflo-team-codex-'));
+    bin = mkdtempSync(join(tmpdir(), 'ruflo-fake-codex-'));
+    prevCwd = process.env.CLAUDE_FLOW_CWD;
+    prevPath = process.env.PATH;
+    process.env.CLAUDE_FLOW_CWD = cwd;
+    process.env.PATH = `${bin}${delimiter}${process.env.PATH}`;
+    await tool('team_create').handler({ name: 'cx', host: 'codex' });
+    await tool('team_plan').handler({ team: 'cx', steps: ['rev'] });
+    await tool('team_spawn').handler({ team: 'cx', agent: 'rev', role: 'reviewer', hosts: ['codex'] });
+  });
+
+  afterEach(() => {
+    if (prevCwd === undefined) delete process.env.CLAUDE_FLOW_CWD;
+    else process.env.CLAUDE_FLOW_CWD = prevCwd;
+    process.env.PATH = prevPath;
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  });
+
+  const readTeam = () => JSON.parse(readFileSync(join(cwd, '.claude-flow', 'teams', 'cx', 'team.json'), 'utf-8'));
+
+  it('turn.completed + exit 0 is done; records the thread id and the last message', async () => {
+    fakeCodex([
+      { type: 'thread.started', thread_id: 'th-9' },
+      { type: 'item.completed', item: { type: 'agent_message', text: 'REVIEW_OK' } },
+      { type: 'turn.completed' },
+    ]);
+    const r = await runTeamAgent({ team: 'cx', agent: 'rev', resolveMcpServer: () => undefined });
+    expect(r.outcome).toBe('done');
+    const run = JSON.parse(readFileSync(join(cwd, r.runFile!), 'utf-8'));
+    expect(run.threadId).toBe('th-9');
+    expect(readFileSync(join(cwd, run.resultFile), 'utf-8')).toBe('REVIEW_OK');
+    expect(readTeam().members.rev.threadId).toBe('th-9');
+    expect(readTeam().plan.index).toBe(1);
+  });
+
+  it('turn.failed with exit 0 is failed, with the error as reason', async () => {
+    fakeCodex([{ type: 'turn.failed', error: { message: 'usage limit' } }]);
+    const r = await runTeamAgent({ team: 'cx', agent: 'rev', resolveMcpServer: () => undefined });
+    expect(r.outcome).toBe('failed');
+    expect(r.reason).toBe('usage limit');
+    expect(r.exitCode).toBe(1);
+    expect(readTeam().plan.index).toBe(0);
+  });
+
+  it('exit 0 with no terminal event is done with a noTerminalEvent warning', async () => {
+    fakeCodex([{ type: 'thread.started', thread_id: 'th-1' }]);
+    const r = await runTeamAgent({ team: 'cx', agent: 'rev', resolveMcpServer: () => undefined });
+    expect(r.outcome).toBe('done');
+    expect(r.warnings).toContain('noTerminalEvent');
+  });
+});
+
 describe('team runner helpers', () => {
   it('fillPlaceholders is single-pass and JSON-quotes "{name}"', () => {
     expect(fillPlaceholders('{prompt}', { prompt: 'use {cwd}', cwd: '/x' })).toBe('use {cwd}');
@@ -159,10 +227,13 @@ describe('team runner helpers', () => {
     const stream = [
       'not json',
       JSON.stringify({ type: 'thread.started', thread_id: 't-1' }),
+      JSON.stringify({ type: 'item.completed', item: { type: 'mcp_tool_call', server: 'ruflo', tool: 'team_inbox' } }),
       JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'hello' } }),
       JSON.stringify({ type: 'turn.completed', usage: {} }),
     ].join('\n');
-    expect(parseCodexEvents(stream)).toEqual({ threadId: 't-1', terminal: 'turn.completed', lastMessage: 'hello' });
+    expect(parseCodexEvents(stream)).toEqual({
+      threadId: 't-1', terminal: 'turn.completed', lastMessage: 'hello', mcpTools: ['ruflo.team_inbox'],
+    });
     expect(parseCodexEvents(JSON.stringify({ type: 'turn.failed', error: { message: 'quota' } })))
       .toEqual({ terminal: 'turn.failed', failure: 'quota' });
   });
