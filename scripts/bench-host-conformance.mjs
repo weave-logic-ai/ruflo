@@ -1066,7 +1066,9 @@ function domainCodexInit() {
   let hookCount = -1;
   try {
     const hooks = JSON.parse(readFileSync(join(dir, '.codex', 'hooks.json'), 'utf-8'));
-    hookCount = JSON.stringify(hooks.hooks?.SubagentStop ?? []).split('team hook-stop').length - 1;
+    hookCount = (hooks.hooks?.SubagentStop ?? [])
+      .flatMap((g) => g.hooks ?? [])
+      .filter((h) => String(h.command || '').includes('team hook-stop')).length;
   } catch { /* missing */ }
   record('codex-init:hooks-json', 'codex-init', true, hookCount === 1, 0,
     hookCount === 1 ? 'one SubagentStop → team hook-stop entry after two default runs' : `team hook-stop entries: ${hookCount}`);

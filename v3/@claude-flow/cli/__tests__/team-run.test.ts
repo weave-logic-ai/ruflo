@@ -106,6 +106,27 @@ describe('team run (fake command host)', () => {
     expect(readTeam().plan.index).toBe(0);
   });
 
+  it('delivers queued inbox messages in the prompt and archives them', async () => {
+    const seen = join(cwd, 'prompt-seen.txt');
+    await setup(['-e', `require('fs').writeFileSync(${JSON.stringify(seen)}, process.argv[1])`, '{prompt}']);
+    await tool('team_send').handler({ team: 'demo', to: 'worker', from: 'lead', type: 'task', summary: 'scope', message: 'Only touch src/a.ts' });
+
+    const dry = await runTeamAgent({ team: 'demo', agent: 'worker', dryRun: true });
+    expect(dry.dryRun!.inboxMessages).toBe(1);
+    expect(await inbox('worker')).toHaveLength(1); // a dry run leaves it queued
+
+    const r = await runTeamAgent({ team: 'demo', agent: 'worker' });
+    expect(r.outcome).toBe('done');
+    const prompt = readFileSync(seen, 'utf-8');
+    expect(prompt).toContain('=== Messages for you (1,');
+    expect(prompt).toContain('--- from lead · task · scope ---\nOnly touch src/a.ts');
+    expect(prompt.indexOf('Only touch src/a.ts')).toBeLessThan(prompt.lastIndexOf('\nTask:\n'));
+    expect(await inbox('worker')).toHaveLength(0);
+    expect(readdirSync(join(cwd, '.claude-flow', 'swarm', 'mailbox', 'worker', 'archive'))).toHaveLength(1);
+    const run = JSON.parse(readFileSync(join(cwd, r.runFile!), 'utf-8'));
+    expect(run.inboxDelivered).toHaveLength(1);
+  });
+
   it('--dry-run resolves argv and starts nothing', async () => {
     await setup(['-e', "require('fs').writeFileSync('ran.txt','x')", '{prompt}']);
     const r = await runTeamAgent({ team: 'demo', agent: 'worker', dryRun: true });

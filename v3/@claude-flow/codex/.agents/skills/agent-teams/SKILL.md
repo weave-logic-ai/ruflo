@@ -49,7 +49,9 @@ Use `ruflo team run ... --dry-run` to see the exact command before running it.
 
 ## Child rules
 
-- Read your inbox first: `team_inbox` with your team and agent name.
+- Read the "Messages for you" block in your prompt first: the runner moves
+  your queued messages there. If the Ruflo MCP tools are available,
+  `team_inbox` shows anything that arrived later.
 - Stay inside your role's constraint (read-only roles do not change files).
 - End with a complete, self-contained reply. The runner delivers it as your
   handoff even if you cannot call `team_send`.

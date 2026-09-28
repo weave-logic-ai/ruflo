@@ -44,13 +44,44 @@ export interface TeamRunResult {
   success: boolean;
   exitCode: number;
   error?: string;
-  dryRun?: { command: string; args: string[]; cwd: string; passEnvNames: string[]; promptVia: string };
+  dryRun?: { command: string; args: string[]; cwd: string; passEnvNames: string[]; promptVia: string; inboxMessages: number };
   runId?: string;
   runFile?: string;
   outcome?: 'done' | 'failed';
   reason?: string;
   warnings?: string[];
   onStop?: unknown;
+}
+
+interface InboxMessage {
+  id: string;
+  from: string;
+  type: string;
+  summary?: string;
+  content: string;
+  timestamp?: string;
+}
+
+async function readInbox(team: string, agent: string, peek: boolean): Promise<InboxMessage[]> {
+  const r = (await tool('team_inbox').handler({ team, agent, peek })) as { success?: boolean; messages?: InboxMessage[] };
+  return r.success && Array.isArray(r.messages) ? r.messages : [];
+}
+
+/**
+ * Put queued messages in a delimited block before the task. The task body
+ * starts at the last "Task:" line of the protocol; without one the block is
+ * appended.
+ */
+export function withMessages(prompt: string, messages: InboxMessage[]): string {
+  if (!messages.length) return prompt;
+  const lines = [`=== Messages for you (${messages.length}, oldest first; already removed from your inbox) ===`];
+  for (const m of messages) {
+    lines.push(`--- from ${m.from} · ${m.type}${m.summary ? ` · ${m.summary}` : ''} ---`, m.content);
+  }
+  lines.push('=== End of messages ===');
+  const block = lines.join('\n');
+  const at = prompt.lastIndexOf('\nTask:\n');
+  return at < 0 ? `${prompt}\n\n${block}` : `${prompt.slice(0, at)}\n${block}\n${prompt.slice(at)}`;
 }
 
 interface ExecPlanEntry {
@@ -169,11 +200,10 @@ export async function runTeamAgent(opts: TeamRunOptions): Promise<TeamRunResult>
   const runsDir = join(teamDir(teamName), 'runs');
   const resultFile = join(runsDir, `${agent}-${runId}.last.txt`);
   const runFile = join(runsDir, `${agent}-${runId}.json`);
-  const prompt = String(entry.prompt ?? '');
+  const basePrompt = String(entry.prompt ?? '');
   const warnings: string[] = [];
 
   const vars: Record<string, string> = {
-    prompt,
     team: teamName,
     agent,
     role: member.role,
@@ -192,14 +222,16 @@ export async function runTeamAgent(opts: TeamRunOptions): Promise<TeamRunResult>
       warnings.push('mcpServerNotFound');
     }
   }
-  const args = rawArgs.map((a) => fillPlaceholders(a, vars));
   const { command, promptVia, passEnv } = entry.exec;
 
   if (opts.dryRun) {
+    // Peek only: a dry run shows the queued messages but leaves them queued.
+    const queued = await readInbox(teamName, agent, true);
+    const args = rawArgs.map((a) => fillPlaceholders(a, { ...vars, prompt: withMessages(basePrompt, queued) }));
     return {
       success: true,
       exitCode: 0,
-      dryRun: { command, args, cwd: root, passEnvNames: [...(passEnv ?? [])], promptVia },
+      dryRun: { command, args, cwd: root, passEnvNames: [...(passEnv ?? [])], promptVia, inboxMessages: queued.length },
       warnings,
     };
   }
@@ -208,6 +240,13 @@ export async function runTeamAgent(opts: TeamRunOptions): Promise<TeamRunResult>
   if (!dual || typeof dual.runHeadlessProcess !== 'function') {
     return fail('`ruflo team run` needs a newer @claude-flow/codex (runHeadlessProcess is missing)');
   }
+
+  // Exec children may have no Ruflo MCP (or a sandbox that blocks it), so the
+  // runner drains the member's inbox (archived, as team_inbox does) and
+  // delivers the queued messages in the prompt.
+  const delivered = await readInbox(teamName, agent, false);
+  const prompt = withMessages(basePrompt, delivered);
+  const args = rawArgs.map((a) => fillPlaceholders(a, { ...vars, prompt }));
 
   await withTeamLock(teamName, () => {
     const cur = loadTeam(teamName).team;
@@ -269,6 +308,7 @@ export async function runTeamAgent(opts: TeamRunOptions): Promise<TeamRunResult>
     resultFile: relative(root, resultFile),
     ...(events?.threadId ? { threadId: events.threadId } : {}),
     ...(events ? { mcpTools: events.mcpTools ?? [] } : {}),
+    inboxDelivered: delivered.map((m) => m.id),
     warnings,
   });
 

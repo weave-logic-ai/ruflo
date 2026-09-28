@@ -85,7 +85,7 @@ Use the \`team_*\` MCP tools when a task splits into ordered roles (research, de
 
 ### Child rules
 
-- Read \`team_inbox\` for your team and agent name first.
+- Messages queued for you arrive in the prompt under "Messages for you"; read them first. \`team_inbox\` (when the Ruflo MCP tools are available) shows anything newer.
 - Stay inside your role: read-only roles do not change files.
 - End with a complete reply. The runner delivers it as your handoff even if you cannot call \`team_send\`.
 `;

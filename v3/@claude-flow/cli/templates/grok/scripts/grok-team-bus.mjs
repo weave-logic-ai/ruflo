@@ -18,7 +18,8 @@
  *   node scripts/grok-team-bus.mjs shutdown --team feature-auth
  *
  * The ruflo CLI resolves as: RUFLO_CLI (path to cli.js, run with node) →
- * the project's node_modules → `ruflo` on PATH → `npx -y ruflo@latest`.
+ * the project's node_modules → `ruflo` on PATH → `npx --no-install ruflo`.
+ * It never downloads a package; with no CLI it exits 2 and says why.
  */
 
 import fs from 'node:fs';
@@ -110,7 +111,7 @@ function resolveRuflo(projectRoot) {
   if (which.status === 0 && which.stdout.trim()) {
     return { cmd: which.stdout.trim().split(/\r?\n/)[0], pre: [] };
   }
-  return { cmd: process.platform === 'win32' ? 'npx.cmd' : 'npx', pre: ['-y', 'ruflo@latest'] };
+  return { cmd: process.platform === 'win32' ? 'npx.cmd' : 'npx', pre: ['--no-install', 'ruflo'] };
 }
 
 function print(obj) {
@@ -147,19 +148,26 @@ function main() {
     encoding: 'utf8',
     shell: process.platform === 'win32' && cmd.endsWith('.cmd'),
   });
-  if (r.error) {
-    print({ ok: false, error: `ruflo CLI could not be started (${r.error.message}); set RUFLO_CLI to cli.js` });
+  const out = (r.stdout || '').trim();
+  let parsed = null;
+  try {
+    parsed = JSON.parse(out.slice(out.indexOf('{')));
+  } catch {
+    /* handled below */
+  }
+  if (!parsed) {
+    const detail = (r.stderr || out || '').trim().split('\n').pop();
+    const missing = r.error || /missing packages|could not determine executable|not found/i.test(r.stderr || '');
+    print({
+      ok: false,
+      error: missing
+        ? `no local ruflo CLI found (${r.error ? r.error.message : detail}). Install ruflo in this project (npm i -D ruflo) or set RUFLO_CLI to <ruflo>/v3/@claude-flow/cli/bin/cli.js`
+        : `${[cmd, ...pre].join(' ')} did not return team JSON (exit ${r.status}: ${detail}). It may predate \`ruflo team\`; set RUFLO_CLI to a newer cli.js`,
+    });
     process.exit(2);
   }
-  const out = (r.stdout || '').trim();
-  try {
-    const parsed = JSON.parse(out.slice(out.indexOf('{')));
-    // `ok` mirrors `success` for callers of the original script.
-    print({ ok: parsed.success !== false, ...parsed });
-  } catch {
-    if (out) process.stdout.write(out + '\n');
-    if (r.stderr) process.stderr.write(r.stderr);
-  }
+  // `ok` mirrors `success` for callers of the original script.
+  print({ ok: parsed.success !== false, ...parsed });
   process.exit(r.status ?? 1);
 }
 

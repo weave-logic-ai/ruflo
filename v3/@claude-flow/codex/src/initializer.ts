@@ -34,9 +34,17 @@ export function resolveBundledSkillsPath(moduleUrl = import.meta.url): string {
 
 export const TEAM_HOOK_MARKER = 'team hook-stop';
 
-/** The SubagentStop hook command for Codex (Windows goes through cmd /c). */
+export const TEAM_HOOK_MISSING_CLI =
+  'ruflo team hook-stop: no local ruflo CLI found. Install it in this project with npm i -D ruflo, or remove the SubagentStop entry from .codex/hooks.json';
+
+/**
+ * The SubagentStop hook command for Codex (Windows goes through cmd /c).
+ * It uses the project's (or a global) installed ruflo via `npx --no-install`,
+ * so a stop never downloads a package. When no CLI is found it prints why on
+ * stderr and still exits 0.
+ */
 export function teamStopHookCommand(platform: NodeJS.Platform = process.platform): string {
-  const base = 'npx -y ruflo@latest team hook-stop --host codex';
+  const base = `npx --no-install ruflo team hook-stop --host codex || echo "${TEAM_HOOK_MISSING_CLI}" 1>&2`;
   return platform === 'win32' ? `cmd /c ${base}` : base;
 }
 

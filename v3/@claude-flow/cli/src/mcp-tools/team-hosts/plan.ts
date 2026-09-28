@@ -22,7 +22,9 @@ function buildProtocol(ctx: SpawnContext, adapter: TeamHostAdapter): string {
   return [
     `You are "${ctx.agent}" (role: ${ctx.role}) on team "${ctx.team.name}".`,
     ...adapter.protocolLines(ctx),
-    `Read your inbox first: team_inbox (team=${ctx.team.name}, agent=${ctx.agent}).`,
+    adapter.kind === 'exec'
+      ? `Messages queued for you are included below. If the Ruflo MCP tools are available, team_inbox (team=${ctx.team.name}, agent=${ctx.agent}) shows anything newer.`
+      : `Read your inbox first: team_inbox (team=${ctx.team.name}, agent=${ctx.agent}).`,
     ctx.next.length ? `Next agent(s): ${ctx.next.join(', ')}` : 'Next: report completion to the team lead.',
     handoff,
     '',

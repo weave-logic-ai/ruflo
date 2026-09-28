@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { CodexInitializer, mergeTeamStopHook, teamStopHookCommand } from '../src/initializer.js';
 import { BUILT_IN_SKILL_NAMES } from '../src/generators/skill-md.js';
@@ -98,7 +99,7 @@ describe('Agent Teams stop hook (on by default)', () => {
     expect(readHooks()).toEqual({
       hooks: {
         SubagentStop: [
-          { hooks: [{ type: 'command', command: 'npx -y ruflo@latest team hook-stop --host codex', timeout: 30 }] },
+          { hooks: [{ type: 'command', command: teamStopHookCommand('linux'), timeout: 30 }] },
         ],
       },
     });
@@ -130,9 +131,21 @@ describe('Agent Teams stop hook (on by default)', () => {
     expect(readFileSync(hooksFile(), 'utf-8')).toBe(first);
   });
 
-  it('uses cmd /c on Windows', () => {
-    expect(teamStopHookCommand('win32')).toBe('cmd /c npx -y ruflo@latest team hook-stop --host codex');
+  it('uses a locally installed ruflo, never a download, and cmd /c on Windows', () => {
+    const cmd = teamStopHookCommand('linux');
+    expect(cmd.startsWith('npx --no-install ruflo team hook-stop --host codex || echo ')).toBe(true);
+    expect(cmd).not.toMatch(/@latest|npx -y/);
+    expect(teamStopHookCommand('win32').startsWith('cmd /c npx --no-install ruflo team hook-stop')).toBe(true);
   });
+
+  it('the hook command exits 0 with a clear message when no ruflo CLI is installed', () => {
+    const r = spawnSync('/bin/sh', ['-c', teamStopHookCommand('linux')], {
+      cwd: projectPath, input: '{}', encoding: 'utf-8', timeout: 60_000,
+      env: { ...process.env, PATH: originalPath, npm_config_prefix: projectPath, npm_config_cache: join(projectPath, '.npm') },
+    });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toContain('no local ruflo CLI found');
+  }, 70_000);
 
   it('initialize merges the hook by default and prints the /hooks trust step', async () => {
     const plain = await new CodexInitializer().initialize({ projectPath, template: 'default' });
