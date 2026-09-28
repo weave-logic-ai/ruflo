@@ -17,4 +17,11 @@ export type {
   WorkerCapabilityEnvelope,
 } from './orchestrator.js';
 
+export { runHeadlessProcess, buildWorkerEnvironment } from './process.js';
+export type {
+  HeadlessProcessOptions,
+  HeadlessProcessResult,
+  WorkerEnvironmentOptions,
+} from './process.js';
+
 export { createDualModeCommand } from './cli.js';
