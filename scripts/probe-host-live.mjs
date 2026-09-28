@@ -22,7 +22,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -369,7 +369,48 @@ function runHost(id) {
   record(id, 'binary', 'discover', 'critical', true, 0, bin);
   adapter.discover();
   adapter.connect();
+  statusCheck(id);
   if (!NO_EXECUTE) adapter.execute();
+}
+
+function statusCheck(id) {
+  const script = join(REPO_ROOT, 'scripts', 'host-statusline.mjs');
+  if (!existsSync(script)) {
+    record(id, 'statusline', 'status', 'skip', false, 0, 'scripts/host-statusline.mjs is not in this checkout');
+    return;
+  }
+  const r = run(process.execPath, [script, '--host', id, '--json'], 15_000);
+  const data = parseJson(r.stdout);
+  if (!data?.line) {
+    record(id, 'statusline', 'status', 'warn', false, r.ms, 'status snapshot produced no line');
+    return;
+  }
+  if (id === 'codex' || data.surface == null) {
+    record(id, 'statusline', 'status', 'skip', false, r.ms, `${data.line} — this host has no status row`);
+    return;
+  }
+  const loaded = String(data.line).startsWith('RuFlo loaded');
+  record(id, 'statusline', 'status', loaded ? 'critical' : 'warn', loaded, r.ms, data.line);
+  if (id === 'grok') {
+    const homeCfg = join(process.env.HOME || '', '.grok', 'config.toml');
+    let wired = false;
+    try {
+      wired = existsSync(homeCfg) && /^\s*\[ui\.status_line\]/m.test(readFileSync(homeCfg, 'utf8'));
+    } catch {
+      wired = false;
+    }
+    record(
+      id,
+      'statusline:wired',
+      'status',
+      wired ? 'critical' : 'warn',
+      wired,
+      0,
+      wired
+        ? 'user ~/.grok/config.toml has [ui.status_line] (project config cannot set this)'
+        : 'row stays hidden until ~/.grok/config.toml has [ui.status_line]; project .grok/config.toml cannot enable it',
+    );
+  }
 }
 
 function main() {

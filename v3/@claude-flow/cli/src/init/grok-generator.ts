@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -119,6 +120,34 @@ function materializeGrokConfig(dest: string): void {
   }
 }
 
+const GROK_STATUSLINE_COMMAND =
+  "sh -c 'test -f scripts/host-statusline.mjs && node scripts/host-statusline.mjs || true'";
+
+/**
+ * Project .grok/config.toml cannot enable the status row. Append the user-level
+ * command when it is absent. Leave an existing [ui.status_line] alone.
+ * Returns the config path when it writes, otherwise null.
+ */
+function wireGrokUserStatusLine(): string | null {
+  const home = os.homedir();
+  if (!home) return null;
+  const dest = path.join(home, '.grok', 'config.toml');
+  const block = `\n# Ruflo loaded-status row (host map: grok → ui.status_line, user scope).\n[ui.status_line]\ntype = "command"\ncommand = "${GROK_STATUSLINE_COMMAND}"\n`;
+  try {
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, block.trimStart(), 'utf-8');
+      return dest;
+    }
+    const text = fs.readFileSync(dest, 'utf-8');
+    if (/^\s*\[ui\.status_line\]/m.test(text)) return null;
+    fs.appendFileSync(dest, block, 'utf-8');
+    return dest;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Initialize Grok host surface in targetDir.
  */
@@ -212,6 +241,10 @@ export function executeGrokInit(options: GrokInitOptions): GrokInitResult {
       errors,
     );
   }
+
+  // Grok 1.0.41 reads [ui.status_line] from the user file only.
+  const statusNote = wireGrokUserStatusLine();
+  if (statusNote) filesCreated.push(statusNote);
 
   return {
     success: errors.length === 0,

@@ -1,9 +1,9 @@
-# Host probe — probe-mukc1h0a
+# Host probe — probe-mukzgeo0
 
-**When:** 2026-09-27T21:30:32.360Z
+**When:** 2026-09-28T08:26:00.333Z
 **Hosts:** grok, claude, codex
 **Live model turn:** false
-**Result:** PASS — 28 passed, 0 failed, 1 warnings, 5 skipped
+**Result:** PASS — 31 passed, 0 failed, 1 warnings, 6 skipped
 
 Skips are surfaces that host does not expose. They are not passes.
 
@@ -29,10 +29,13 @@ Skips are surfaces that host does not expose. They are not passes.
 | PASS | grok | connect | `server-tool:hooks_route` | exposed by the configured server command |
 | PASS | grok | connect | `server-tool:swarm_init` | exposed by the configured server command |
 | PASS | grok | connect | `server-tool:neural_status` | exposed by the configured server command |
+| PASS | grok | status | `statusline` | RuFlo loaded │ ruflo │ rules │ 4 agents │ 2 skills │ hook │ trusted |
+| PASS | grok | status | `statusline:wired` | user ~/.grok/config.toml has [ui.status_line] (project config cannot set this) |
 | PASS | claude | discover | `binary` | /Users/mathewbeane/.local/bin/claude |
 | SKIP | claude | discover | `inspect` | Claude Code has no inspect --json. File presence is not evidence a session loaded rules, agents, skills, or hooks. |
 | PASS | claude | connect | `mcp:claude-flow` | claude-flow: Scope: User config (available in all your projects) Status: ✔ Connected Type: stdio Command: npx Args: -y ruflo@latest mcp start Environment: CLAUDE_FLOW_MCP_TOOLS=memory,swarm,agent,hooks To remove this server, run: claude mcp |
 | SKIP | claude | connect | `server-tools` | claude mcp get does not report the tool list or the spawned command reliably enough to assert tool names |
+| PASS | claude | status | `statusline` | RuFlo loaded │ claude statusLine |
 | PASS | codex | discover | `binary` | /Users/mathewbeane/.local/bin/codex |
 | SKIP | codex | discover | `inspect` | Codex CLI has no inspect --json for rules, agents, skills, or hooks. |
 | PASS | codex | connect | `mcp:configured` | claude-flow: node /Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js |
@@ -43,3 +46,4 @@ Skips are surfaces that host does not expose. They are not passes.
 | PASS | codex | connect | `server-tool:hooks_route` | present on the configured CLI |
 | PASS | codex | connect | `server-tool:swarm_init` | present on the configured CLI |
 | SKIP | codex | connect | `server-tool:neural_status` | host filter CLAUDE_FLOW_MCP_TOOLS=memory,swarm,agent,hooks,team does not include neural |
+| SKIP | codex | status | `statusline` | RuFlo │ codex mcp configured (no status row) — this host has no status row |

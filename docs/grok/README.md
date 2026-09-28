@@ -114,6 +114,20 @@ Permission allows in the scaffold use Grok's native forms, `Bash(...)` and `MCPT
 
 `UserPromptSubmit` hooks that allow the prompt do not inject stdout into the model on 1.0.41. If a route hook seems to vanish, read `.swarm/route-latest.md` or call the route tool. That is a host limit, not a missing Ruflo file.
 
+## Loaded status
+
+Claude already paints this as `statusLine` in `.claude/settings.json` (`node .claude/helpers/statusline.cjs`). Grok has the same kind of row, `[ui.status_line]`, and on 1.0.41 it is read only from `~/.grok/config.toml`. A project config entry is ignored, and a `SessionStart` hook cannot print it (that stdout is discarded).
+
+`init --grok` appends this when the user file has no `[ui.status_line]` yet:
+
+```toml
+[ui.status_line]
+type = "command"
+command = "sh -c 'test -f scripts/host-statusline.mjs && node scripts/host-statusline.mjs || true'"
+```
+
+The script prints one line: `RuFlo loaded │ ruflo │ rules │ 4 agents │ 2 skills │ hook │ trusted`, or the names of what is missing. Restart Grok after the user file changes. Codex has no status row; `node scripts/host-statusline.mjs --host codex` prints the same facts.
+
 ## Prove it
 
 Two different checks:

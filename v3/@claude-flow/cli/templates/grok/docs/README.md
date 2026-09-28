@@ -114,6 +114,10 @@ Permission allows in the scaffold use Grok's native forms, `Bash(...)` and `MCPT
 
 `UserPromptSubmit` hooks that allow the prompt do not inject stdout into the model on 1.0.41. If a route hook seems to vanish, read `.swarm/route-latest.md` or call the route tool. That is a host limit, not a missing Ruflo file.
 
+## Loaded status
+
+`scripts/host-statusline.mjs` is the shared "what loaded" line. Claude shows its own richer `statusLine`. Grok shows this script only when `~/.grok/config.toml` has `[ui.status_line]` (project config cannot set it). `init --grok` appends that block when it is absent. Codex has no status row.
+
 ## Prove it
 
 From a Ruflo checkout (these scripts are not copied by `init --grok`):

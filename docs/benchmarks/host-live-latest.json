@@ -1,6 +1,6 @@
 {
-  "id": "probe-mukc1h0a",
-  "when": "2026-09-27T21:30:32.360Z",
+  "id": "probe-mukzgeo0",
+  "when": "2026-09-28T08:26:00.333Z",
   "hosts": [
     "grok",
     "claude",
@@ -8,9 +8,9 @@
   ],
   "live": false,
   "execute": false,
-  "pass": 28,
+  "pass": 31,
   "fail": 0,
-  "skip": 5,
+  "skip": 6,
   "warn": 1,
   "results": [
     {
@@ -28,7 +28,7 @@
       "domain": "discover",
       "level": "critical",
       "ok": true,
-      "ms": 148,
+      "ms": 118,
       "detail": "1.0.41"
     },
     {
@@ -136,7 +136,7 @@
       "domain": "connect",
       "level": "critical",
       "ok": true,
-      "ms": 269,
+      "ms": 197,
       "detail": "node /Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js mcp start; 362 tools discovered"
     },
     {
@@ -194,6 +194,24 @@
       "detail": "exposed by the configured server command"
     },
     {
+      "host": "grok",
+      "id": "statusline",
+      "domain": "status",
+      "level": "critical",
+      "ok": true,
+      "ms": 24,
+      "detail": "RuFlo loaded │ ruflo │ rules │ 4 agents │ 2 skills │ hook │ trusted"
+    },
+    {
+      "host": "grok",
+      "id": "statusline:wired",
+      "domain": "status",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "user ~/.grok/config.toml has [ui.status_line] (project config cannot set this)"
+    },
+    {
       "host": "claude",
       "id": "binary",
       "domain": "discover",
@@ -217,7 +235,7 @@
       "domain": "connect",
       "level": "critical",
       "ok": true,
-      "ms": 3312,
+      "ms": 3242,
       "detail": "claude-flow: Scope: User config (available in all your projects) Status: ✔ Connected Type: stdio Command: npx Args: -y ruflo@latest mcp start Environment: CLAUDE_FLOW_MCP_TOOLS=memory,swarm,agent,hooks To remove this server, run: claude mcp"
     },
     {
@@ -228,6 +246,15 @@
       "ok": false,
       "ms": 0,
       "detail": "claude mcp get does not report the tool list or the spawned command reliably enough to assert tool names"
+    },
+    {
+      "host": "claude",
+      "id": "statusline",
+      "domain": "status",
+      "level": "critical",
+      "ok": true,
+      "ms": 29,
+      "detail": "RuFlo loaded │ claude statusLine"
     },
     {
       "host": "codex",
@@ -253,7 +280,7 @@
       "domain": "connect",
       "level": "critical",
       "ok": true,
-      "ms": 552,
+      "ms": 694,
       "detail": "claude-flow: node /Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js"
     },
     {
@@ -318,6 +345,15 @@
       "ok": false,
       "ms": 0,
       "detail": "host filter CLAUDE_FLOW_MCP_TOOLS=memory,swarm,agent,hooks,team does not include neural"
+    },
+    {
+      "host": "codex",
+      "id": "statusline",
+      "domain": "status",
+      "level": "skip",
+      "ok": false,
+      "ms": 20,
+      "detail": "RuFlo │ codex mcp configured (no status row) — this host has no status row"
     }
   ]
 }
