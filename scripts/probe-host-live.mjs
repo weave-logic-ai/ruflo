@@ -424,7 +424,11 @@ function teamRoundTrip(host, hosts, root = mkdtempSync(join(tmpdir(), `${RUN_ID}
   try { runFile = JSON.parse(readFileSync(join(root, res?.runFile || '-'), 'utf8')); } catch { /* reported */ }
   record(host, 'live:run-file', 'execute', 'critical', runFile?.code === 0, 0, runFile ? `code=${runFile.code} ms=${runFile.ms}` : 'missing');
   const inbox = teamCli('inbox', { agent: 'lead', peek: true }, root);
-  const result = (inbox.json?.messages || []).find((m) => m.type === 'result' && m.from === 'child');
+  // Mailboxes are keyed by agent, not team, so the lead inbox can hold results from earlier probe
+  // runs. Only accept the result that points at this run's team directory.
+  const result = (inbox.json?.messages || []).find(
+    (m) => m.type === 'result' && m.from === 'child' && String(m.content || '').includes(`teams/${team}/`),
+  );
   record(host, 'live:lead-result', 'execute', 'critical', Boolean(result), 0, result ? result.content.slice(0, 120).replace(/\s+/g, ' ') : 'no result message in the lead inbox');
   const status = teamCli('status', { team }, root);
   const idx = status.json?.team?.plan?.index;
