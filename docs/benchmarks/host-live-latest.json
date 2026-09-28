@@ -1,0 +1,323 @@
+{
+  "id": "probe-mukc1h0a",
+  "when": "2026-09-27T21:30:32.360Z",
+  "hosts": [
+    "grok",
+    "claude",
+    "codex"
+  ],
+  "live": false,
+  "execute": false,
+  "pass": 28,
+  "fail": 0,
+  "skip": 5,
+  "warn": 1,
+  "results": [
+    {
+      "host": "grok",
+      "id": "binary",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/.grok/bin/grok"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:version",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 148,
+      "detail": "1.0.41"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:trusted",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "folder trusted"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:rules",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/rules/ruflo-grok.md"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:agent:ruflo-architect",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-architect.md"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:agent:ruflo-coder",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-coder.md"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:agent:ruflo-tester",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-tester.md"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:agent:ruflo-reviewer",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/agents/ruflo-reviewer.md"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:skill:agent-teams-grok",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/skills/agent-teams-grok/SKILL.md"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:skill:handoff",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/dev/ruflo/.grok/skills/handoff/SKILL.md"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:hook:subagent-stop",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "node \"$CLAUDE_PROJECT_DIR/scripts/grok-subagent-stop-hook.mjs\""
+    },
+    {
+      "host": "grok",
+      "id": "inspect:mcp",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "ruflo via /Users/mathewbeane/.grok/config.toml"
+    },
+    {
+      "host": "grok",
+      "id": "inspect:mcp:extra",
+      "domain": "discover",
+      "level": "warn",
+      "ok": false,
+      "ms": 0,
+      "detail": "also loaded: claude-flow via /Users/mathewbeane/.claude.json"
+    },
+    {
+      "host": "grok",
+      "id": "doctor:handshake",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 269,
+      "detail": "node /Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js mcp start; 362 tools discovered"
+    },
+    {
+      "host": "grok",
+      "id": "server-tool:team_create",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "exposed by the configured server command"
+    },
+    {
+      "host": "grok",
+      "id": "server-tool:memory_store",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "exposed by the configured server command"
+    },
+    {
+      "host": "grok",
+      "id": "server-tool:memory_retrieve",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "exposed by the configured server command"
+    },
+    {
+      "host": "grok",
+      "id": "server-tool:hooks_route",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "exposed by the configured server command"
+    },
+    {
+      "host": "grok",
+      "id": "server-tool:swarm_init",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "exposed by the configured server command"
+    },
+    {
+      "host": "grok",
+      "id": "server-tool:neural_status",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "exposed by the configured server command"
+    },
+    {
+      "host": "claude",
+      "id": "binary",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/.local/bin/claude"
+    },
+    {
+      "host": "claude",
+      "id": "inspect",
+      "domain": "discover",
+      "level": "skip",
+      "ok": false,
+      "ms": 0,
+      "detail": "Claude Code has no inspect --json. File presence is not evidence a session loaded rules, agents, skills, or hooks."
+    },
+    {
+      "host": "claude",
+      "id": "mcp:claude-flow",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 3312,
+      "detail": "claude-flow: Scope: User config (available in all your projects) Status: ✔ Connected Type: stdio Command: npx Args: -y ruflo@latest mcp start Environment: CLAUDE_FLOW_MCP_TOOLS=memory,swarm,agent,hooks To remove this server, run: claude mcp"
+    },
+    {
+      "host": "claude",
+      "id": "server-tools",
+      "domain": "connect",
+      "level": "skip",
+      "ok": false,
+      "ms": 0,
+      "detail": "claude mcp get does not report the tool list or the spawned command reliably enough to assert tool names"
+    },
+    {
+      "host": "codex",
+      "id": "binary",
+      "domain": "discover",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "/Users/mathewbeane/.local/bin/codex"
+    },
+    {
+      "host": "codex",
+      "id": "inspect",
+      "domain": "discover",
+      "level": "skip",
+      "ok": false,
+      "ms": 0,
+      "detail": "Codex CLI has no inspect --json for rules, agents, skills, or hooks."
+    },
+    {
+      "host": "codex",
+      "id": "mcp:configured",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 552,
+      "detail": "claude-flow: node /Users/mathewbeane/dev/ruflo/v3/@claude-flow/cli/bin/cli.js"
+    },
+    {
+      "host": "codex",
+      "id": "mcp:handshake",
+      "domain": "connect",
+      "level": "skip",
+      "ok": false,
+      "ms": 0,
+      "detail": "codex mcp list shows configuration, not a live handshake"
+    },
+    {
+      "host": "codex",
+      "id": "server-tool:team_create",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "present on the configured CLI"
+    },
+    {
+      "host": "codex",
+      "id": "server-tool:memory_store",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "present on the configured CLI"
+    },
+    {
+      "host": "codex",
+      "id": "server-tool:memory_retrieve",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "present on the configured CLI"
+    },
+    {
+      "host": "codex",
+      "id": "server-tool:hooks_route",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "present on the configured CLI"
+    },
+    {
+      "host": "codex",
+      "id": "server-tool:swarm_init",
+      "domain": "connect",
+      "level": "critical",
+      "ok": true,
+      "ms": 0,
+      "detail": "present on the configured CLI"
+    },
+    {
+      "host": "codex",
+      "id": "server-tool:neural_status",
+      "domain": "connect",
+      "level": "skip",
+      "ok": false,
+      "ms": 0,
+      "detail": "host filter CLAUDE_FLOW_MCP_TOOLS=memory,swarm,agent,hooks,team does not include neural"
+    }
+  ]
+}
