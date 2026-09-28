@@ -427,6 +427,7 @@ async function initGrokAction(
         `.grok/skills/ — agent-teams-grok`,
         `scripts/grok-team-bus.mjs — ADR-402 team bus CLI MVP`,
         `docs/grok/README.md — operator guide`,
+        `scripts/host-statusline.mjs — loaded row (Grok user status line / Claude already has one)`,
       ].join('\n'),
       'Grok Build Integration (ADR-402)'
     );
