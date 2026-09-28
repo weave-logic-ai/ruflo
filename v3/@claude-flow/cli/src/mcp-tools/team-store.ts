@@ -181,6 +181,40 @@ export function saveTeam(team: TeamState): void {
   writeJson(teamPath(team.name), team);
 }
 
+/**
+ * Record an agent stop on a loaded team (caller saves). `done` advances the
+ * plan when the agent owns the current step; `failed` marks the step failed
+ * and does not advance. A repeated runId for the same member is a duplicate.
+ */
+export function applyStop(
+  team: TeamState,
+  agent: string,
+  outcome: 'done' | 'failed',
+  runId?: string,
+  reason?: string,
+): { duplicate: boolean; current?: PlanStep } {
+  const member = team.members[agent];
+  if (member && runId && member.lastStopRunId === runId) return { duplicate: true };
+  if (member) {
+    member.status = outcome === 'failed' ? 'failed' : 'idle';
+    member.lastStopAt = nowIso();
+    if (runId) member.lastStopRunId = runId;
+    if (reason !== undefined) member.lastStopReason = reason;
+  }
+  const plan = team.plan;
+  const cur = plan.steps[plan.index];
+  if (!cur || (cur.agent !== agent && cur.id !== agent)) return { duplicate: false };
+  if (outcome === 'failed') {
+    cur.status = 'failed';
+  } else {
+    cur.status = 'done';
+    plan.index = Math.min(plan.index + 1, plan.steps.length);
+    const next = plan.steps[plan.index];
+    if (next) next.status = 'ready';
+  }
+  return { duplicate: false, current: cur };
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**

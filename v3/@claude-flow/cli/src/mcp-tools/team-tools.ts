@@ -10,19 +10,14 @@ import { existsSync, readdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { type MCPTool, getProjectCwd } from './types.js';
 import { validateText } from './validate-input.js';
-import {
-  normalizeAgentLabel,
-  resolveHost,
-  roleDefaults,
-  TeamHostsError,
-  type SpawnContext,
-  type TeamHostAdapter,
-} from './team-hosts/index.js';
+import { normalizeAgentLabel, resolveHost, TeamHostsError } from './team-hosts/index.js';
+import { buildSpawnPlan, stringList } from './team-hosts/plan.js';
 import {
   ensureDir,
   listMailboxFiles,
   loadTeam,
   mailboxRoot,
+  applyStop,
   normalizeStep,
   nowIso,
   readJson,
@@ -45,52 +40,6 @@ export {
 } from './team-store.js';
 
 const RUN_ID_RE = /^[A-Za-z0-9_.-]{1,128}$/;
-
-/** Shared, host-neutral protocol text plus the adapter's own lines. */
-function buildProtocol(ctx: SpawnContext, adapter: TeamHostAdapter): string {
-  const target = ctx.next.length ? ctx.next.join(', ') : 'the team lead';
-  const handoff = adapter.kind === 'exec'
-    ? `Your final reply is delivered to ${target} as your handoff. End with a complete summary of what you did and what ${target} needs next.`
-    : `Before you finish, send your handoff to ${target} with team_send. Your final reply goes to the lead.`;
-  return [
-    `You are "${ctx.agent}" (role: ${ctx.role}) on team "${ctx.team.name}".`,
-    ...adapter.protocolLines(ctx),
-    `Read your inbox first: team_inbox (team=${ctx.team.name}, agent=${ctx.agent}).`,
-    ctx.next.length ? `Next agent(s): ${ctx.next.join(', ')}` : 'Next: report completion to the team lead.',
-    handoff,
-    '',
-    'Task:',
-    ctx.task || `(No task body — wait for inbox / lead instructions for role ${ctx.role}.)`,
-  ].join('\n');
-}
-
-/** Build spawnPlan.host[<label>] for every requested host. Throws TeamHostsError. */
-function buildSpawnPlan(
-  team: TeamState,
-  agent: string,
-  role: string,
-  task: string,
-  next: string[],
-  hostLabels: string[],
-  model?: string,
-): Record<string, unknown> {
-  const host: Record<string, Record<string, unknown>> = {};
-  for (const label of hostLabels) {
-    const { adapter, hostConfig } = resolveHost(label, getProjectCwd());
-    const ctx: SpawnContext = {
-      team, agent, role, defaults: roleDefaults(role), next, task, label, model, hostConfig,
-    };
-    host[label] = { ...adapter.plan(ctx), prompt: buildProtocol(ctx, adapter) };
-  }
-  const primary = team.host && host[team.host] ? team.host : hostLabels[0];
-  return { teamId: team.id, name: agent, role, prompt: host[primary].prompt, next, host };
-}
-
-function stringList(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw.map(String).map((s) => s.trim()).filter(Boolean);
-  if (typeof raw === 'string') return raw.split(',').map((s) => s.trim()).filter(Boolean);
-  return [];
-}
 
 function okResult(data: Record<string, unknown>) {
   return { success: true, ...data };
@@ -486,36 +435,17 @@ export const teamTools: MCPTool[] = [
         if (error) return errResult(error);
         if (!team) return errResult(`Team "${st.value}" not found`);
 
-        const member = team.members[sa.value];
-        if (member && runId && member.lastStopRunId === runId) {
-          return okResult({ action: 'on-stop', agent: sa.value, duplicate: true, runId });
-        }
-        if (member) {
-          member.status = outcome === 'failed' ? 'failed' : 'idle';
-          member.lastStopAt = nowIso();
-          if (runId) member.lastStopRunId = runId;
-          if (reason !== undefined) member.lastStopReason = reason;
-        }
-
-        const plan = team.plan;
-        const cur = plan.steps[plan.index];
-        const isCurrent = !!cur && (cur.agent === sa.value || cur.id === sa.value);
-        if (isCurrent && outcome === 'failed') {
-          cur.status = 'failed';
-        } else if (isCurrent) {
-          cur.status = 'done';
-          plan.index = Math.min(plan.index + 1, plan.steps.length);
-          const next = plan.steps[plan.index];
-          if (next) next.status = 'ready';
-        }
+        const stop = applyStop(team, sa.value, outcome, runId, reason);
+        if (stop.duplicate) return okResult({ action: 'on-stop', agent: sa.value, duplicate: true, runId });
         saveTeam(team);
 
+        const plan = team.plan;
         if (outcome === 'failed') {
           return okResult({
             action: 'on-stop',
             agent: sa.value,
             outcome,
-            next: isCurrent ? cur : plan.steps[plan.index] || null,
+            next: stop.current ?? plan.steps[plan.index] ?? null,
             assign: {
               hint: `Agent "${sa.value}" failed${reason ? ` (${reason.slice(0, 200)})` : ''}: retry with \`ruflo team run\` or reassign the step`,
               agent: sa.value,
