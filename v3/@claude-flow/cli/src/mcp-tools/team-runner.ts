@@ -294,6 +294,22 @@ export async function runTeamAgent(opts: TeamRunOptions): Promise<TeamRunResult>
   const outcome: 'done' | 'failed' = reason === undefined ? 'done' : 'failed';
   if (events && outcome === 'done' && !events.terminal) warnings.push('noTerminalEvent');
 
+  // A failed run did not act on the delivered messages. Queue them again so a
+  // retry with `ruflo team run` sees them (the archived copies stay as history).
+  if (outcome === 'failed') {
+    for (const m of delivered) {
+      const sent = await tool('team_send').handler({
+        team: teamName,
+        to: agent,
+        from: m.from,
+        type: m.type,
+        summary: m.summary,
+        message: m.content,
+      });
+      if (!(sent as { success?: boolean }).success) warnings.push(`requeueFailed:${m.id}`);
+    }
+  }
+
   writeJson(runFile, {
     runId,
     team: teamName,

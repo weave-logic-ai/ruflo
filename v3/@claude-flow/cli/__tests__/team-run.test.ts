@@ -127,6 +127,19 @@ describe('team run (fake command host)', () => {
     expect(run.inboxDelivered).toHaveLength(1);
   });
 
+  it('a failed run queues the delivered messages again for the retry', async () => {
+    await setup(['-e', 'process.exit(3)', '{prompt}']);
+    await tool('team_send').handler({ team: 'demo', to: 'worker', from: 'lead', type: 'task', summary: 'scope', message: 'Only touch src/a.ts' });
+
+    const r = await runTeamAgent({ team: 'demo', agent: 'worker' });
+    expect(r.outcome).toBe('failed');
+    const queued = await inbox('worker');
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({ from: 'lead', type: 'task', content: 'Only touch src/a.ts' });
+    const run = JSON.parse(readFileSync(join(cwd, r.runFile!), 'utf-8'));
+    expect(run.inboxDelivered).toHaveLength(1);
+  });
+
   it('--dry-run resolves argv and starts nothing', async () => {
     await setup(['-e', "require('fs').writeFileSync('ran.txt','x')", '{prompt}']);
     const r = await runTeamAgent({ team: 'demo', agent: 'worker', dryRun: true });
