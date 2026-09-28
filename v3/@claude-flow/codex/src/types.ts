@@ -169,7 +169,7 @@ export interface CodexInitOptions {
   skills?: string[];
   force?: boolean;
   dual?: boolean;  // Generate both Claude Code and Codex configs
-  /** Opt-in: merge a SubagentStop → `ruflo team hook-stop --host codex` hook into .codex/hooks.json */
+  /** Merge a SubagentStop → `ruflo team hook-stop --host codex` hook into .codex/hooks.json (default true) */
   teamHooks?: boolean;
   migrateFrom?: 'claude.md' | 'CLAUDE.md';
 }

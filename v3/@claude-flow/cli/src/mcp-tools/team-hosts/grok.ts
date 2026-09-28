@@ -32,7 +32,7 @@ export const grokAdapter: TeamHostAdapter = {
     return [
       'Grok Build 1.0.41 runs you as a general-purpose subagent. Nesting depth is 1: do not call spawn_subagent.',
       roleConstraint(ctx.defaults.capability_mode, ctx.defaults.isolation),
-      'Host-agnostic Agent Teams bus (ADR-320). There is no Claude SendMessage tool.',
+      'Host-agnostic Agent Teams bus (ADR-402). There is no Claude SendMessage tool.',
       'Prefer Ruflo MCP team_send / team_inbox when available; CLI fallback:',
       `  node scripts/grok-team-bus.mjs send --team ${ctx.team.name} --to <next> --summary "<short>" --message "<handoff>"`,
       `Or store under memory namespace team:${ctx.team.name}.`,

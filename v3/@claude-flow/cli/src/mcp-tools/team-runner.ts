@@ -1,5 +1,5 @@
 /**
- * `ruflo team run` and `ruflo team hook-stop` (ADR-320 amendment).
+ * `ruflo team run` and `ruflo team hook-stop` (ADR-402).
  *
  * The runner executes a member's stored exec plan (Codex or a command host)
  * as one headless process. Process exit is the stop signal: the runner

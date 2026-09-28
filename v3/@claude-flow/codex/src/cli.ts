@@ -85,7 +85,7 @@ program
   .option('-s, --skills <skills>', 'Comma-separated list of skills to include')
   .option('-f, --force', 'Overwrite existing files', false)
   .option('--dual', 'Generate both Codex and Claude Code configurations', false)
-  .option('--team-hooks', 'Also add a SubagentStop hook for Agent Teams to .codex/hooks.json (needs /hooks trust)', false)
+  .option('--no-team-hooks', 'Do not add the Agent Teams SubagentStop hook to .codex/hooks.json')
   .option('-p, --path <path>', 'Project path', process.cwd())
   .option('-q, --quiet', 'Suppress verbose output', false)
   .action(async (options) => {

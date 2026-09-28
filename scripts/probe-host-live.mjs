@@ -326,8 +326,8 @@ const adapters = {
       let hooks = null;
       try { hooks = JSON.parse(readFileSync(join(REPO_ROOT, '.codex', 'hooks.json'), 'utf8')); } catch { /* none */ }
       const entry = JSON.stringify(hooks?.hooks?.SubagentStop ?? []).includes('team hook-stop');
-      if (entry) record('codex', 'init:hook:subagent-stop', 'discover', 'critical', true, 0, '.codex/hooks.json → team hook-stop');
-      else record('codex', 'init:hook:subagent-stop', 'discover', 'skip', false, 0, 'opt-in (init --codex --team-hooks); ruflo team run does not need it');
+      if (entry) record('codex', 'init:hook:subagent-stop', 'discover', 'critical', true, 0, '.codex/hooks.json → team hook-stop (trust it in /hooks)');
+      else record('codex', 'init:hook:subagent-stop', 'discover', 'warn', false, 0, 'no team hook-stop entry: init --codex adds it unless --no-team-hooks; ruflo team run does not need it');
     },
     connect() {
       const r = run('codex', ['mcp', 'list', '--json'], 30_000);

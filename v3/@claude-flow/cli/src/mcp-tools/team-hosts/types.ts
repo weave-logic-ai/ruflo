@@ -1,5 +1,5 @@
 /**
- * Team host adapter seam (ADR-320 amendment).
+ * Team host adapter seam (ADR-402).
  *
  * Each host (Grok, Claude, Codex, or a generic command host) turns one
  * team_spawn request into a plan entry under spawnPlan.host[<label>] and

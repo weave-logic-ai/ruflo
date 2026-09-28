@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * bench-host-conformance.mjs — ADR-320 host conformance bench
+ * bench-host-conformance.mjs — ADR-402 host conformance bench
  *
  * Proves the Ruflo CLI surface each team host is supposed to call: MCP
  * tools, CLI, team plans, the exec runner, and init products. It never
@@ -10,7 +10,7 @@
  * --host grok (default via bench-grok-host-conformance.mjs) — domains 1-9:
  *   1. Host surface      — .grok/ config, rules, agents, skills, team bus
  *   2. Tool inventory    — required MCP prefixes present (team/swarm/hive/memory/…)
- *   3. Agent Teams       — ADR-320 team_* lifecycle
+ *   3. Agent Teams       — ADR-402 team_* lifecycle
  *   4. Swarm             — swarm_init/status/health/shutdown + agent_spawn
  *   5. Hive-mind         — init → spawn → memory → consensus → broadcast → status → shutdown
  *   6. Learning loop     — memory store/search/retrieve + hooks pre/post-task + route + intelligence
@@ -21,7 +21,8 @@
  * --host codex:
  *   host-plan   — team_spawn for a codex team: exec plan shape, sandbox, stdin
  *   codex-init  — CodexInitializer into a temp dir (codex CLI hidden from PATH):
- *                 AGENTS.md team section, agent-teams skill, opt-in hooks.json
+ *                 AGENTS.md team section, agent-teams skill, default hooks.json
+ *                 merge (idempotent), and no hook with teamHooks: false
  *
  * --host command:
  *   host-plan   — team_spawn for a team-hosts.json command host
@@ -136,7 +137,7 @@ const REQUIRED_HOST_FILES = [
   'scripts/grok-team-bus.mjs',
   'v3/@claude-flow/cli/templates/grok/config.toml',
   'v3/@claude-flow/cli/src/mcp-tools/team-tools.ts',
-  'v3/docs/adr/ADR-320-grok-host-agnostic-agent-teams.md',
+  'v3/docs/adr/ADR-402-host-agnostic-agent-teams.md',
 ];
 
 // ── result collector ────────────────────────────────────────────────────────
@@ -1035,9 +1036,16 @@ function domainCodexInit() {
   // (no `codex mcp add` / `codex plugin add` against the user's config).
   const script = `
     const { CodexInitializer } = await import(${JSON.stringify('file://' + entry)});
-    const r = await new CodexInitializer().initialize({ projectPath: ${JSON.stringify(dir)}, template: 'default', teamHooks: true });
-    const again = await new CodexInitializer().initialize({ projectPath: ${JSON.stringify(dir)}, template: 'default', teamHooks: true, force: true });
-    process.stdout.write(JSON.stringify({ ok: r.success && again.success, errors: [...(r.errors || []), ...(again.errors || [])] }));
+    const r = await new CodexInitializer().initialize({ projectPath: ${JSON.stringify(dir)}, template: 'default' });
+    const again = await new CodexInitializer().initialize({ projectPath: ${JSON.stringify(dir)}, template: 'default', force: true });
+    const optOut = await new CodexInitializer().initialize({ projectPath: ${JSON.stringify(dir + '-no-hooks')}, template: 'default', teamHooks: false });
+    const { existsSync } = await import('node:fs');
+    process.stdout.write(JSON.stringify({
+      ok: r.success && again.success && optOut.success,
+      trustStep: (r.warnings || []).some((w) => w.includes('/hooks')),
+      optOutHook: existsSync(${JSON.stringify(dir + '-no-hooks/.codex/hooks.json')}),
+      errors: [...(r.errors || []), ...(again.errors || []), ...(optOut.errors || [])],
+    }));
   `;
   const t0 = performance.now();
   const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
@@ -1061,7 +1069,11 @@ function domainCodexInit() {
     hookCount = JSON.stringify(hooks.hooks?.SubagentStop ?? []).split('team hook-stop').length - 1;
   } catch { /* missing */ }
   record('codex-init:hooks-json', 'codex-init', true, hookCount === 1, 0,
-    hookCount === 1 ? 'one SubagentStop → team hook-stop entry after two runs' : `team hook-stop entries: ${hookCount}`);
+    hookCount === 1 ? 'one SubagentStop → team hook-stop entry after two default runs' : `team hook-stop entries: ${hookCount}`);
+  record('codex-init:trust-step', 'codex-init', true, out?.trustStep === true, 0,
+    out?.trustStep ? '/hooks trust step printed' : 'no /hooks trust step in warnings');
+  record('codex-init:no-team-hooks', 'codex-init', true, out?.optOutHook === false, 0,
+    out?.optOutHook === false ? 'teamHooks: false writes no hooks.json' : 'opt-out still wrote a hook');
 }
 
 const FAKE_HOST_ARGS = ['-e', "process.stdout.write('ok:'+process.argv[1].length)", '{prompt}'];
@@ -1146,7 +1158,7 @@ function finish(forcedCode) {
 
   const report = {
     id: RUN_ID,
-    title: `Host conformance bench (ADR-320) — ${HOST}`,
+    title: `Host conformance bench (ADR-402) — ${HOST}`,
     host: HOST,
     cli: relative(REPO_ROOT, CLI) || CLI,
     repo: '.',
@@ -1167,7 +1179,7 @@ function finish(forcedCode) {
         'Hive-mind / queen consensus',
         'Memory + AgentDB + embeddings',
         'Learning & reasoning pipelines (hooks/neural)',
-        'Agent Teams host-agnostic bus (ADR-320)',
+        'Agent Teams host-agnostic bus (ADR-402)',
         'Grok host surface (init --grok)',
       ],
     },

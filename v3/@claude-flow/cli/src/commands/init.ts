@@ -125,7 +125,7 @@ export function runCodexInitializerCli(
     options.template,
     ...(options.force ? ['--force'] : []),
     ...(options.dual ? ['--dual'] : []),
-    ...(options.teamHooks ? ['--team-hooks'] : []),
+    ...(options.teamHooks === false ? ['--no-team-hooks'] : []),
   ];
 
   const result = process.platform === 'win32'
@@ -389,7 +389,7 @@ async function maybeInstallSkillsSh(ctx: CommandContext): Promise<void> {
   }
 }
 
-// Grok Build host initialization (ADR-320)
+// Grok Build host initialization (ADR-402)
 async function initGrokAction(
   ctx: CommandContext,
   options: { force: boolean }
@@ -426,10 +426,10 @@ async function initGrokAction(
         `.grok/rules/ruflo-grok.md — host doctrine / tool map`,
         `.grok/agents/ — ruflo-architect/coder/tester/reviewer`,
         `.grok/skills/ — agent-teams-grok`,
-        `scripts/grok-team-bus.mjs — ADR-320 team bus CLI (calls ruflo team)`,
+        `scripts/grok-team-bus.mjs — ADR-402 team bus CLI (calls ruflo team)`,
         `docs/grok/README.md — operator guide`,
       ].join('\n'),
-      'Grok Build Integration (ADR-320)'
+      'Grok Build Integration (ADR-402)'
     );
     output.writeln();
     output.printInfo(`Created: ${result.filesCreated.length}  Skipped (exists): ${result.filesSkipped.length}`);
@@ -541,12 +541,19 @@ async function initCodexAction(
 
     // Warnings
     if (result.warnings && result.warnings.length > 0) {
+      // Trust steps (e.g. the /hooks review) are always shown, never folded
+      // into the "... and N more" line.
+      const actions = result.warnings.filter((w) => w.includes('ACTION REQUIRED'));
+      const others = result.warnings.filter((w) => !w.includes('ACTION REQUIRED'));
       output.printWarning('Warnings:');
-      for (const warning of result.warnings.slice(0, 5)) {
+      for (const warning of others.slice(0, 5)) {
         output.printInfo(`  • ${warning}`);
       }
-      if (result.warnings.length > 5) {
-        output.printInfo(`  ... and ${result.warnings.length - 5} more`);
+      if (others.length > 5) {
+        output.printInfo(`  ... and ${others.length - 5} more`);
+      }
+      for (const action of actions) {
+        output.printInfo(action);
       }
       output.writeln();
     }
@@ -988,9 +995,10 @@ const initAction = async (ctx: CommandContext): Promise<CommandResult> => {
   const codexMode = ctx.flags.codex as boolean;
   const dualMode = ctx.flags.dual as boolean;
   const grokMode = ctx.flags.grok as boolean;
-  const teamHooks = ctx.flags.teamHooks === true;
+  // The CLI parser turns `--no-team-hooks` into `teamHooks: false`.
+  const teamHooks = !(ctx.flags.teamHooks === false || ctx.flags['no-team-hooks'] === true);
 
-  // Grok Build host (ADR-320) — separate surface under .grok/
+  // Grok Build host (ADR-402) — separate surface under .grok/
   if (grokMode) {
     return initGrokAction(ctx, { force });
   }
@@ -1777,7 +1785,7 @@ export const initCommand: Command = {
     },
     {
       name: 'grok',
-      description: 'Initialize for Grok Build host (creates .grok/, team bus scripts, ADR-320 surface)',
+      description: 'Initialize for Grok Build host (creates .grok/, team bus scripts, ADR-402 surface)',
       type: 'boolean',
       default: false,
     },
@@ -1788,8 +1796,8 @@ export const initCommand: Command = {
       default: false,
     },
     {
-      name: 'team-hooks',
-      description: 'With --codex/--dual: add a SubagentStop hook for Agent Teams to .codex/hooks.json (needs /hooks trust)',
+      name: 'no-team-hooks',
+      description: 'With --codex/--dual: skip the Agent Teams SubagentStop hook in .codex/hooks.json',
       type: 'boolean',
       default: false,
     },
@@ -1831,7 +1839,7 @@ export const initCommand: Command = {
     { command: 'claude-flow init upgrade --verbose', description: 'Show detailed upgrade info' },
     { command: 'claude-flow init --codex', description: 'Initialize for OpenAI Codex (AGENTS.md)' },
     { command: 'claude-flow init --codex --full', description: 'Codex init with all canonical packaged skills' },
-    { command: 'claude-flow init --grok', description: 'Initialize for Grok Build (.grok/, team bus, ADR-320)' },
+    { command: 'claude-flow init --grok', description: 'Initialize for Grok Build (.grok/, team bus, ADR-402)' },
     { command: 'claude-flow init --grok --force', description: 'Overwrite existing Grok host files' },
     { command: 'claude-flow init --dual', description: 'Initialize for both Claude Code and Codex' },
     { command: 'claude-flow init --no-codex-detect', description: 'Skip auto-configuring OpenAI Codex even if it is installed' },

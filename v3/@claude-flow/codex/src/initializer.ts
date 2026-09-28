@@ -83,7 +83,8 @@ const TEAM_HOOK_TRUST_MESSAGE = [
   '',
   'ACTION REQUIRED (Agent Teams stop hook): start a new Codex session, open /hooks,',
   'review the SubagentStop entry that runs `ruflo team hook-stop --host codex`, and trust it.',
-  'It stays inactive until you do. `ruflo team run` does not need this hook.',
+  'It stays inactive until you do. `ruflo team run` does not need this hook;',
+  'skip it next time with --no-team-hooks.',
 ].join('\n');
 
 /**
@@ -95,7 +96,7 @@ export class CodexInitializer {
   private skills: string[] = [];
   private force: boolean = false;
   private dual: boolean = false;
-  private teamHooks: boolean = false;
+  private teamHooks: boolean = true;
   private bundledSkillsPath: string = '';
 
   /**
@@ -107,7 +108,7 @@ export class CodexInitializer {
     this.skills = options.skills ?? DEFAULT_SKILLS_BY_TEMPLATE[this.template];
     this.force = options.force ?? false;
     this.dual = options.dual ?? false;
-    this.teamHooks = options.teamHooks ?? false;
+    this.teamHooks = options.teamHooks ?? true;
 
     // Resolve bundled skills path (relative to this file's location)
     this.bundledSkillsPath = resolveBundledSkillsPath();
@@ -254,8 +255,8 @@ export class CodexInitializer {
         warnings.push(pluginResult.activationMessage);
       }
 
-      // Opt-in native Codex subagent stop hook for Agent Teams. The default
-      // `ruflo team run` path needs no hook.
+      // SubagentStop hook for native Codex subagents on the team bus (on by
+      // default, `--no-team-hooks` skips it). `ruflo team run` does not need it.
       if (this.teamHooks) {
         try {
           const merged = await mergeTeamStopHook(this.projectPath);
@@ -956,7 +957,7 @@ Enable verbose logging for development.
       files.push('CLAUDE.local.md');
     }
 
-    if (options.teamHooks) {
+    if (options.teamHooks !== false) {
       files.push('.codex/hooks.json');
     }
 

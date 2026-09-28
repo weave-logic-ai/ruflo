@@ -1,5 +1,5 @@
 /**
- * ADR-320 amendment: host adapters (Codex, command hosts), team_on_stop
+ * ADR-402: host adapters (Codex, command hosts), team_on_stop
  * outcome/runId handling, and the team.json lock.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -14,7 +14,7 @@ function tool(name: string) {
   return t;
 }
 
-describe('teamTools host adapters and on_stop (ADR-320 amendment)', () => {
+describe('teamTools host adapters and on_stop (ADR-402)', () => {
   let cwd: string;
   let prev: string | undefined;
 

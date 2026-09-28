@@ -1,189 +1,157 @@
-# ADR-402: Host-Agnostic Agent Teams (Grok-first, Claude-portable)
+# ADR-402: Host-Agnostic Agent Teams (generic, Codex and Grok hosts)
 
-**Status:** Accepted (Phases 0–4 complete; see `docs/benchmarks/grok-host-conformance-latest.md`)  
-**Date:** 2026-07-20  
+**Status:** Accepted (Grok surface complete; Codex and command hosts added 2026-09-28)  
+**Date:** 2026-07-20, revised 2026-09-28  
 **Deciders:** weave-logic-ai / Ruflo Grok host effort  
-**Related:** ADR-018 (Claude Code integration), teammate-plugin, swarm-comms mailbox, RuvNet Brain grounding, `init --codex` pattern
+**Related:** ADR-018 (Claude Code integration), teammate-plugin, swarm-comms mailbox, RuvNet Brain grounding, `init --codex`, `init --grok`  
+**Checked against:** `grok 1.0.41`, `codex-cli 0.157.1`
 
 ---
 
 ## Context
 
-Ruflo’s multi-agent “Agent Teams” UX on Claude Code depends on host features:
+Ruflo's multi-agent "Agent Teams" UX on Claude Code depends on host features: named agents with the proprietary `SendMessage` mailbox, the Claude `Task` tool / TeammateTool (`@claude-flow/teammate-plugin`, `~/.claude/teams/`), and the optional `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`. The teammate-plugin is Claude-bound: it peer-depends on Claude Code and its spawn returns an `AgentInput` for Claude's `Task`.
 
-- Named agents + proprietary **`SendMessage`** mailbox
-- Claude `Task` tool / TeammateTool (`@claude-flow/teammate-plugin`, `~/.claude/teams/`)
-- Optional `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`
+Other agent runtimes have strong primitives of their own but no `SendMessage`:
 
-Grok Build already provides strong primitives that Claude Agent Teams lack or only partially have:
+| Capability | Grok Build | Codex CLI | Claude Agent Teams |
+|------------|-----------|-----------|--------------------|
+| Parallel children | `spawn_subagent` + background | `codex exec` processes; native `multi_agent` delegated by the model | Task / teammates |
+| Isolation | `isolation: worktree` | `--sandbox read-only\|workspace-write`, `--worktree` | shared tree |
+| Deterministic stop | SubagentStop hook | process exit + `--json` events | TeammateIdle / TaskCompleted |
+| Stage continuity | `resume_from` | `codex exec resume <thread>` | message-only handoff |
 
-| Capability | Grok | Claude Agent Teams |
-|------------|------|--------------------|
-| Parallel children | `spawn_subagent` + background | Task / teammates |
-| Isolation | **`isolation: worktree`** | Shared tree (race-prone) |
-| Least privilege | `capability_mode` | Soft / prompt-level |
-| Stage continuity | `resume_from` | Message-only handoff |
-| Hooks | Claude-compat + SubagentStop | TeammateIdle / TaskCompleted |
-| Skills | `.agents` + `.claude` discovery | Claude skills |
+Any other runtime with a one-shot CLI (`<bin> <flags> <prompt>`) could also be a teammate if Ruflo did not have to know its name. A prompt convention is not enough: teams need a durable bus, pipeline advancement, and results that survive a child that never calls a team tool.
 
-Today’s **teammate-plugin is Claude-bound** (peerDep on Claude Code, spawn returns `AgentInput` for Claude Task). A Grok-only prompt convention is not enough: teams, skills, and learning are product-critical and must work **better than Claude Code**.
-
-Existing seed in-tree: `.claude/helpers/swarm-comms.sh` already implements a **filesystem mailbox** under `.claude-flow/swarm/mailbox/`.
+The in-tree seed is `.claude/helpers/swarm-comms.sh`, a filesystem mailbox under `.claude-flow/swarm/mailbox/`.
 
 ## Decision
 
-1. **Put the Agent Teams bus in Ruflo, not in the host.**  
-   Comms are MCP + on-disk/AgentDB state. Hosts only execute spawns and run hooks.
+### 1. The bus lives in Ruflo
 
-2. **Ship `team_*` MCP tools** (host-agnostic contract):
+Comms are MCP tools plus on-disk state. Hosts only execute spawns and report stops.
 
-   | Tool | Purpose |
-   |------|---------|
-   | `team_create` | Create team + topology + max members |
-   | `team_spawn` | Register teammate; return **spawn plan** for the host |
-   | `team_send` | Enqueue message to named agent (or `*`) |
-   | `team_inbox` | Drain / peek mailbox for agent |
-   | `team_broadcast` | Fan-out |
-   | `team_plan` | Steps + dependencies (pipeline) |
-   | `team_status` | Members, queues, plan progress |
-   | `team_on_stop` | Idle-assign / train (hook entry) |
-   | `team_shutdown` | Graceful teardown |
+| Tool | Purpose |
+|------|---------|
+| `team_create` | Create a team with a default host label, topology and max members |
+| `team_spawn` | Register a teammate; return a spawn plan per host. Never executes anything |
+| `team_send` / `team_broadcast` | Enqueue a message to an agent (or every member) |
+| `team_inbox` | Drain or peek an agent's mailbox |
+| `team_plan` | Ordered pipeline steps; the first becomes `ready` |
+| `team_status` | Members, plan progress, pending mail |
+| `team_on_stop` | Record a stop (`done` or `failed`), advance the plan on `done` |
+| `team_shutdown` | Graceful teardown |
 
-3. **Spawn plan contract** (host adapter):
+The same handlers are exposed without MCP as `ruflo team <create|spawn|send|inbox|broadcast|plan|status|on-stop|shutdown> --params '<json>'`, which prints the handler's JSON result and exits 1 when `success` is false. Scripts and hook shims use this interface.
 
-```json
-{
-  "teamId": "team_…",
-  "name": "architect",
-  "role": "architect",
-  "prompt": "…comms protocol embedded…",
-  "host": {
-    "grok": {
-      "subagent_type": "general-purpose",
-      "capability_mode": "read-only",
-      "isolation": "none",
-      "background": true
-    },
-    "claude": {
-      "taskType": "system-architect",
-      "note": "optional back-compat path"
-    }
-  },
-  "next": ["developer"]
-}
-```
+### 2. Canonical on-disk format, single writer
 
-Grok lead calls `spawn_subagent` with the plan; it does **not** need `SendMessage`.
+`.claude-flow/teams/<team>/team.json` and `.claude-flow/swarm/mailbox/<agent>/<priority>_<id>.json` are a public format. The `team_*` handlers are its only writer.
 
-4. **Storage**
+- `team-tools.ts` exports `TeamState`, `TeamMember`, `PlanStep`, `TeamMessage` and `TEAM_SCHEMA_VERSION = 1`. Every write stamps `schemaVersion`.
+- A missing `schemaVersion` is the legacy (v0) layout written by the original CLI bus. Reads normalize it: plan steps stored verbatim get `id`, `agent` and `status` by the `team_plan` rule, and a flat v0 Grok `spawn` entry is kept as data. Unknown keys are preserved.
+- A `schemaVersion` newer than the reader knows is refused with an error, and nothing is written. An older tool cannot corrupt a newer layout.
+- Read-modify-write handlers run under a short `O_EXCL` lock (`team.json.lock`, 2 s wait, a lock older than 10 s is stale) and write through a temp file plus rename, because parallel runners stop at the same time.
+- Mailbox directories are keyed by agent, not by team. Two teams with the same agent name share an inbox; changing that would break existing mailboxes and is out of scope.
 
-   - Team state: project-local `.claude-flow/teams/{teamId}/` (not `~/.claude/teams/`)
-   - Mailbox: reuse/extend `.claude-flow/swarm/mailbox/{agent}/` (+ optional AgentDB namespace `team:{id}`)
-   - Learning: existing `post-task` / memory_store patterns
+### 3. Host adapter seam
 
-5. **Grok defaults that beat Claude**
-
-   - Write agents: `isolation: worktree`
-   - Research/review: `read-only` / explore
-   - Pipeline: short cycles + `team_on_stop` idle assign
-   - Optional `resume_from` for stage continuity when mailbox payload is large
-
-6. **Grounding (RuvNet Brain)** is in scope for the same host effort:  
-   `search_ruvnet` (or forge-mcp) + intent/action policy so the model does not drift to training-prior infra.
-
-7. **Product entry:** `npx ruflo init --grok` (later) mirrors `init --codex` — writes `.grok/config.toml`, rules, agents, MCP registration.
-
-## Consequences
-
-### Positive
-
-- Same team semantics on Grok, Codex, Claude (Claude becomes one adapter).
-- Worktree isolation reduces multi-agent file conflicts vs Claude shared-tree teams.
-- Federation can later ride the same bus.
-- Upstreamable: host-agnostic core can be proposed back to ruvnet/ruflo.
-
-### Negative / costs
-
-- Must implement and maintain `team_*` tools and adapters.
-- Grok may not inject `UserPromptSubmit` stdout the way Claude injects `additionalContext` — route/brain hooks need file or MCP fallbacks.
-- Skill/tool surface must be curated to avoid context drowning (300+ MCP tools + 100+ skills).
-
-### Neutral
-
-- teammate-plugin remains for native Claude TeammateTool users until migrated to the agnostic bus.
-- CLAUDE.md Claude-specific examples stay valid for Claude hosts; Grok overlay (`.grok/rules/ruflo-grok.md`) takes precedence on Grok.
-
-## Implementation plan (summary)
-
-1. Phase 0: project `.grok/config.toml` + rules + MCP smoke — **done**.
-2. Phase 1: mailbox-backed `team_create/send/inbox/status` MVP — **done** (CLI + MCP).
-3. Phase 2: `team_spawn` spawn plans + Grok agent defs + SubagentStop → `team_on_stop` — **done**.
-4. Phase 3: RuvNet Brain MCP + grounding rules — **done** (`KB_DIR` required).
-5. Phase 4: `init --grok` + host conformance bench — **done**.
-   - Bench: `node scripts/bench-grok-host-conformance.mjs`
-   - Domains: host surface, tool inventory, teams, swarm, hive-mind, learning loop, neural, CLI parity
-   - Report: `docs/benchmarks/grok-host-conformance-latest.{md,json}`
-   - Note: not a live Claude Task/SendMessage side-by-side; proves the **host-agnostic MCP/CLI surface** Grok uses is complete (same tools Claude would call via Ruflo).
-
-## Alternatives considered
-
-| Alternative | Why rejected |
-|-------------|--------------|
-| Prompt-only “pretend SendMessage” | No durable bus, no idle assign, not better than Claude |
-| Depend on Grok adding SendMessage | Speculative; bus should not be proprietary |
-| Codex-style “single executor + swarm records only” | Fails requirement: agent teams + skills are critical |
-| Fork forever without agnostic bus | Blocks upstream and multi-host |
-
-## Amendment (2026-09-27) — Grok Build 1.0.41
-
-Re-checked against `grok 1.0.41` and `~/.grok/docs/user-guide/` on that binary. The spawn example in the Decision section above matches Grok as of 2026-07-20. The live tool no longer matches it.
-
-- `spawn_subagent` accepts `prompt`, `description`, `background`, `isolation`, and optionally `cwd`, `resume_from`, and `model`. It does not accept `subagent_type` or `capability_mode`. An omitted type is `general-purpose`. Capability is a property of the agent definition, which spawn cannot select.
-- Nesting depth is 1. Only the lead calls `spawn_subagent`.
-- Project `.grok/config.toml` contributes `[mcp_servers]`, `[plugins]`, `[permission]`, and `[mcp].max_output_bytes`. `[subagents]` in that file is ignored.
-- `.grok/agents/*.md` are session profiles (`--agent-profile`, `/agents`).
-- MCP tools are still reached through `search_tool` / `use_tool` (`ruflo__team_create`). `grok mcp add` still defaults to user scope; `--scope project` / `-s project` writes `./.grok/config.toml`.
-- Folder trust (`/hooks-trust`, `grok --trust`) gates project MCP, hooks, skills, and rules together.
-
-`team_spawn` now returns `host.grok.spawn` (the arguments to pass) and `host.grok.advisory` (role constraint, not a spawn argument). The prompt states the read-only or worktree constraint. `isolation: "worktree"` remains the enforced isolation knob. Operator steps and the re-check list live in `docs/grok/README.md`.
-
-## Amendment (2026-09-28) — Codex and custom command hosts
-
-Checked against `codex-cli 0.157.1` and `grok 1.0.41`. This amendment adds a Codex adapter at parity with Grok, a generic command host for any agent runtime that has a one-shot CLI, and one adapter seam so hosts are not copy-pasted branches.
-
-### Two kinds of host
-
-A **native-spawn host** spawns children itself. The lead calls the host's own spawn primitive with the plan's arguments, and the host's stop hook reports completion. Grok (`spawn_subagent`) and Claude (`Task`) are native-spawn hosts.
-
-An **exec host** is a CLI that runs one headless turn and exits. Ruflo runs it through `ruflo team run`, and the process exit is the stop signal. No hook, and no hook trust, is needed on that path. `codex exec` is an exec host. Any runtime with a command like `<bin> <flags> <prompt>` can be one through the command adapter.
-
-Codex is both. Native Codex subagents (`multi_agent`) are delegated by the lead model's prompt, not by a deterministic call, so the **Codex stop signal is the runner's, and only the runner's, by default**: `ruflo team run` parses the `codex exec --json` event stream and the process exit (see Runner). Nothing is written to Codex's hook config or trust ledger by default. A `SubagentStop` hook for native Codex subagents is opt-in (`init --codex --team-hooks`). Codex records its own trust when the user approves it in `/hooks`, and Ruflo never writes that ledger.
-
-### Host adapter seam
-
-`team-tools.ts` stops building host plans inline. Each host implements one interface in `mcp-tools/team-hosts/`:
+`team-tools.ts` does not build host plans inline. Each host implements one interface in `mcp-tools/team-hosts/`:
 
 ```ts
 interface TeamHostAdapter {
-  id: string;                              // 'grok' | 'claude' | 'codex' | 'command'
+  id: string;                                   // 'grok' | 'claude' | 'codex' | 'command'
   kind: 'native' | 'exec';
   protocolLines(ctx: SpawnContext): string[];   // host-specific lines in the child prompt
   plan(ctx: SpawnContext): Record<string, unknown>;  // becomes spawnPlan.host[<label>]
-  stopIdentity(payload: unknown): { team?: string; agent?: string; outcome?: 'done' | 'failed' };
+  stopIdentity(payload: unknown, env?: NodeJS.ProcessEnv): { team?: string; agent?: string; outcome?: 'done' | 'failed' };
 }
 ```
 
-`SpawnContext` carries the team, agent, role, role defaults (capability, isolation), next agents, the task body, and the resolved host config. The shared protocol text (bus rules, inbox, next agents, task) is built once. Each adapter adds its own lines.
+`SpawnContext` carries the team, agent, role, role defaults (capability mode, isolation), next agents, task body, host label, optional model, and the resolved command-host config. The shared protocol (who you are, read `team_inbox` first, the next agents, how the handoff reaches them, the task) is built once; each adapter adds its own lines.
 
-- `team_spawn` takes an optional `hosts: string[]`. The default is `[team.host, 'claude']`, so existing Grok teams get the same `host.grok` and `host.claude` entries as before. Each host entry now carries its own `prompt`. The top-level `prompt` is the variant for `team.host`, which keeps back-compat.
-- The Grok adapter output is unchanged. The existing Grok unit test is the regression guard.
+There are two kinds of host:
 
-### Codex plan (`host.codex`)
+- A **native-spawn host** spawns children itself. The lead calls the host's spawn primitive with the plan's arguments, and the host's stop hook reports completion through `ruflo team hook-stop --host <id>`. Grok and Claude are native-spawn hosts.
+- An **exec host** is a CLI that runs one headless turn and exits. `ruflo team run` executes it, and process exit is the stop signal. Codex and every command host are exec hosts.
+
+`team_spawn` takes optional `hosts: string[]` and `model`. The default hosts are `[team.host, 'claude']`. Each `host.<label>` entry carries its own `prompt`; the top-level `prompt` is the variant for `team.host`. The registry resolves built-in labels first, then labels from `.claude-flow/team-hosts.json`. An unknown label is an error, never a silent fallback to Grok.
+
+Spawn plan shape:
+
+```json
+{
+  "teamId": "demo",
+  "name": "reviewer",
+  "role": "reviewer",
+  "prompt": "…protocol + task for the team host…",
+  "next": ["lead-check"],
+  "host": {
+    "codex":  { "kind": "exec", "exec": { "…": "…" }, "events": "codex-jsonl", "prompt": "…", "advisory": { "…": "…" } },
+    "claude": { "taskType": "reviewer", "note": "optional back-compat path via Task tool", "prompt": "…" }
+  }
+}
+```
+
+### 4. Generic command host
+
+Any agent runtime can be a teammate without Ruflo knowing its name. The project declares it in `.claude-flow/team-hosts.json`:
+
+```json
+{ "hosts": { "myagent": {
+    "kind": "exec",
+    "command": "myagent",
+    "args": ["run", "--message", "{prompt}"],
+    "promptVia": "arg",
+    "passEnv": ["MYAGENT_API_KEY"],
+    "isolation": "none"
+} } }
+```
+
+`team_create({ host: "myagent" })` or `team_spawn({ hosts: ["myagent"] })` then produces `host.myagent`. Validation is strict:
+
+- the label and `command` match `^[A-Za-z0-9._/-]+$`; built-in labels cannot be redeclared;
+- `kind` must be `exec`; unknown keys are rejected;
+- `args` are strings; the placeholders are `{prompt}`, `{team}`, `{agent}`, `{role}`, `{cwd}`, `{teamRoot}` and `{resultFile}`, and each one must fill a whole argv element;
+- `promptVia: "arg"` needs exactly one `{prompt}` element; `promptVia: "stdin"` must have none;
+- `passEnv` holds environment variable names only.
+
+The runner never uses a shell. Ruflo ships no runtime-specific host besides Grok, Claude and Codex.
+
+### 5. Runner and stop signal for exec hosts
+
+`ruflo team run --team T --agent A [--host <label>] [--timeout ms] [--max-output bytes] [--dry-run] [--json]` loads the member's stored exec plan (a v0 plan has none and is refused with "re-register with team_spawn"), fills placeholders in one pass, and runs the command with bounded output, a timeout, and stdin closed after the optional prompt. The child environment comes from `@claude-flow/codex`'s `buildWorkerEnvironment`: secret-named variables are stripped, the plan's `passEnv` names are re-added, and `CLAUDE_FLOW_CWD` is pinned to the team root. `--dry-run` prints the resolved argv and the names of passed env keys and starts nothing.
+
+When the process exits, the runner:
+
+1. decides the outcome. For a plan with `events: "codex-jsonl"`, the outcome is `done` when the exit code is 0 and the last terminal event is not `turn.failed`; `turn.failed` (its error message becomes `reason`), a non-zero exit or a timeout is `failed`. An exit 0 with no terminal event is `done` with the warning `noTerminalEvent`. For a plain exec host, `done` means exit 0 and no timeout;
+2. writes `.claude-flow/teams/T/runs/A-<runId>.json` with the exit code, duration, outcome, reason, result file, warnings, and for Codex the thread id and the MCP tools the child called;
+3. sends the final message with `team_send` (`type: "result"`, capped at 64 KB, with a pointer to the run file) to each `next` agent, or to `lead` when there is none. A failed run goes to `lead` only, because the next step is not ready;
+4. calls `team_on_stop` with `outcome`, `runId` and `reason`, then exits with the child's code (124 on timeout).
+
+The bus therefore advances even when a sandboxed child never calls a `team_*` tool itself.
+
+`team_on_stop` semantics:
+
+- `failed` marks the member and the current step `failed`, does not advance, and returns a retry-or-reassign hint. A later `done` for the same agent advances normally.
+- A repeated `runId` for the same member is a no-op, so a hook and the runner reporting the same stop are safe.
+- `role:agent` labels (Grok's `description`) are normalized to `agent`.
+
+`ruflo team hook-stop --host <id>` is the entry point for native stop hooks. It reads the hook JSON on stdin (300 ms cap), maps it through the adapter's `stopIdentity`, resolves the team from the payload, then `TEAM_NAME`, then the only active team, and calls `team_on_stop`. With several active teams and none named it does nothing rather than advance the wrong plan. It always exits 0.
+
+The `team` command skips the CLI's update check, helper refresh and daemon autostart, because hooks and runners call it once per agent turn.
+
+### 6. Codex host
+
+Native Codex subagents (`multi_agent`) are delegated by the lead model's prompt, not by a deterministic call, so the primary Codex path is `codex exec` through the runner, and its stop signal is the `--json` event stream plus the exit code.
+
+Plan (`host.codex`), built from the measured 0.157.1 flags only:
 
 ```json
 {
   "contract": "codex-cli-0.157",
   "kind": "exec",
+  "events": "codex-jsonl",
   "exec": {
     "command": "codex",
     "args": ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "--json",
@@ -197,80 +165,90 @@ interface TeamHostAdapter {
 }
 ```
 
-- Sandbox: read-only roles get `--sandbox read-only`. Write roles get `--sandbox workspace-write`, plus `--worktree` when the role's isolation is `worktree`. Plans never contain `--dangerously-bypass-approvals-and-sandbox`.
-- The prompt goes over stdin (`-`) and stdin is then closed. `codex exec` blocks until stdin reaches EOF when it is left open (the same issue the dual-mode orchestrator already works around).
-- `CLAUDE_FLOW_CWD` is pinned for the child's Ruflo MCP server. Without it, a child in a worktree would open a second mailbox inside the worktree.
-- `{mcpServer}` resolves at run time to whichever of `ruflo` or `claude-flow` `codex mcp list --json` shows.
-- `passEnv` is the adapter's allowlist of auth variables. Everything else goes through the orchestrator's existing secret-stripping environment builder.
+- Read-only roles get `--sandbox read-only`. Write roles get `--sandbox workspace-write`, plus `--worktree` when the role's isolation is `worktree`. `-m <model>` is added only when `team_spawn` gets a `model`.
+- Plans never contain `--full-auto` (it does not exist in 0.157.1) or any `--dangerously-bypass-*` flag.
+- The prompt goes over stdin (`-`) and stdin is then closed; `codex exec` otherwise waits for EOF.
+- `{mcpServer}` resolves at run time to the first enabled `ruflo` or `claude-flow` in `codex mcp list --json`. If neither exists, the `-c` pair is dropped and the run records the warning `mcpServerNotFound`. The `"{teamRoot}"` form is filled with a JSON-quoted value, which is valid TOML for any path. Pinning `CLAUDE_FLOW_CWD` stops a child in a worktree from opening a second mailbox there.
+- The thread id from `thread.started` is recorded on the member for a later `codex exec resume`.
+- Parallelism is process-level: one `ruflo team run` per agent.
 
-### Command host (`host.<label>`, generic)
+`init --codex` additions reuse `@claude-flow/codex`:
 
-Any agent runtime can be a teammate without Ruflo knowing its name. Its project declares it in `.claude-flow/team-hosts.json`:
+- **MCP:** unchanged; `registerMCPServer` already registers `ruflo` when missing.
+- **AGENTS.md:** `renderTeamBusSection()` is included by the `default`, `full` and `enterprise` templates. It covers when to use `team_*`, the lead loop (`team_create` → `team_plan` → `team_spawn` → `ruflo team run` → `team_status`), and the child rules. `minimal` gets a short pointer to the skill.
+- **Skill:** a packaged `agent-teams` skill, added to `BUILT_IN_SKILLS` and the `minimal` and `default` template defaults.
+- **Hook (on by default):** `init --codex` idempotently merges one `SubagentStop` entry into the project's `.codex/hooks.json` that runs `npx -y ruflo@latest team hook-stop --host codex` (`cmd /c …` on Windows). Existing entries are kept and never reordered. init prints the `/hooks` trust step; Codex records its own trust when the user approves, and Ruflo never writes `~/.codex/config.toml` or its trust ledger. `--no-team-hooks` skips the merge. The hook covers native Codex subagents; `ruflo team run` does not depend on it. Codex `SubagentStop` field names are not verified yet, so the Codex adapter's `stopIdentity` accepts the Claude-shaped names plus `agent_type`, `agent_id` and `name`.
+
+The dual-mode orchestrator's process and environment code is shared through two exported functions in `@claude-flow/codex/dual-mode` (`runHeadlessProcess`, `buildWorkerEnvironment`). The runner does not use the orchestrator itself, which coordinates through AgentDB memory rather than the team bus.
+
+### 7. Grok host
+
+Checked against `grok 1.0.41` and its user guide:
+
+- `spawn_subagent` accepts `prompt`, `description`, `background`, `isolation`, and optionally `cwd`, `resume_from` and `model`. It does not accept `subagent_type` or `capability_mode`; an omitted type is `general-purpose`.
+- Nesting depth is 1. Only the lead calls `spawn_subagent`.
+- `.grok/agents/*.md` are session profiles (`--agent-profile`, `/agents`), not spawn types.
+- Project `.grok/config.toml` contributes `[mcp_servers]`, `[plugins]`, `[permission]` and `[mcp].max_output_bytes`; `[subagents]` there is ignored. MCP tools are reached through `search_tool` / `use_tool` (`ruflo__team_create`). Folder trust gates project MCP, hooks, skills and rules together.
+
+`host.grok` is the only Grok plan shape:
 
 ```json
-{ "hosts": { "myagent": {
-    "kind": "exec",
-    "command": "myagent",
-    "args": ["run", "--message", "{prompt}"],
-    "promptVia": "arg",
-    "passEnv": ["MYAGENT_API_KEY"],
-    "isolation": "none"
-} } }
+{
+  "contract": "grok-build-1.0.41",
+  "spawn": { "description": "architect:architect", "background": true, "isolation": "none" },
+  "advisory": { "capability_mode": "read-only", "subagent_type": "plan", "note": "…" },
+  "prompt": "…"
+}
 ```
 
-`team_create --host myagent` or `team_spawn --hosts ["myagent"]` then produces `host.myagent` from the command adapter. Validation: the label and command must match `^[A-Za-z0-9._/-]+$`, and `args` must be strings. The allowed placeholders are `{prompt}`, `{team}`, `{agent}`, `{role}`, `{cwd}`, `{teamRoot}` and `{resultFile}`, and each one must fill a whole argv element. With `promptVia: "arg"`, exactly one element is `{prompt}`. The runner never uses a shell. `team_spawn` only returns data and never executes anything. Ruflo ships no runtime-specific host besides Grok, Claude and Codex.
+The lead passes `spawn` plus `prompt` to `spawn_subagent` and leaves `advisory` on the plan. The prompt carries the read-only or worktree constraint; `isolation: "worktree"` is the enforced knob for write roles. Plans carry no project-specific agent-type names.
 
-### Runner and stop signal
+The Grok SubagentStop hook (`scripts/grok-subagent-stop-hook.mjs`) strips the `role:` prefix from the spawn description and does nothing when several teams are active and none is named. The shipped `templates/grok/scripts/grok-team-bus.mjs` is a shim: it keeps its original flags, maps each verb to `ruflo team <verb> --params`, and has no file I/O of its own. It resolves the CLI as `RUFLO_CLI` → the project's `node_modules` → `ruflo` on PATH → `npx -y ruflo@latest`. `npx ruflo init --grok` writes `.grok/config.toml`, rules, agents, skills and these scripts.
 
-`ruflo team run --team T --agent A [--host <label>] [--timeout ms] [--dry-run]` loads the member's stored plan and runs `exec` with bounded output and a timeout. When the process exits, the runner:
+### 8. Claude host
 
-0. decides the outcome. For a host whose plan sets `events: "codex-jsonl"`, the outcome is `done` when the last terminal event is `turn.completed` and the exit code is 0. It is `failed` on `turn.failed` (its `error` becomes `reason`), on a non-zero exit, or on a timeout. An exit 0 with no terminal event is `done` with the warning `noTerminalEvent`. For a plain exec host, the outcome is `done` if and only if the exit code is 0 and there was no timeout;
-1. writes `.claude-flow/teams/T/runs/A-<runId>.json` with the exit code, duration, the result file (or captured stdout), and the Codex thread id from `--json` when present;
-2. sends the final message with `team_send` (`type: "result"`) to each `next` agent, or to `lead` when there is none. A failed run goes to `lead` only, because the next step is not ready;
-3. calls `team_on_stop` with the `outcome` from step 0, `runId`, and `reason`.
+`host.claude` stays a back-compat entry (`taskType` for the `Task` tool). Its `stopIdentity` reads the Claude-shaped hook fields. The teammate-plugin remains for native TeammateTool users.
 
-This is how the bus advances even when the child never calls a `team_*` tool itself. `--dry-run` prints the resolved argv and the names of passed env keys, then exits without starting the host.
+### 9. Grounding
 
-`ruflo team <create|spawn|send|inbox|broadcast|plan|status|on-stop|shutdown> --params '<json>'` calls the same handlers as the MCP tools, in-process, and prints their JSON result. It is the public, non-MCP interface for scripts and for hook shims.
+RuvNet Brain (`search_ruvnet`) grounding with intent and action policy is part of the same host effort, so a model does not drift to training-prior infrastructure.
 
-`ruflo team hook-stop --host <id>` is the entry point for native hooks. It reads the hook JSON from stdin, maps it through `adapter.stopIdentity`, calls `team_on_stop`, and always exits 0.
+## Verification
 
-### `team_on_stop` changes
+- **Format:** a checked-in v0 fixture is read by `team_status`, advanced by `team_on_stop`, and rewritten with `schemaVersion: 1` without losing fields; `schemaVersion: 2` is refused without a write; `team run` refuses the v0 member. The Grok shim, run through the built CLI, leaves the same `team.json` as the handlers for the same call sequence.
+- **Unit:** plan shape per adapter (Grok unchanged; Codex sandbox, worktree, stdin and model; command validation and rejections); `stopIdentity` per adapter; `team_on_stop` failed, duplicate and `role:agent` cases; ten concurrent stops under the lock; the runner with a fake command host (result file, handoff, plan advance, failure, timeout, dry run) and a fake `codex` on PATH (`turn.completed`, `turn.failed`, no terminal event); the hook merge (empty project, existing events, idempotent, opt-out).
+- **Bench:** `scripts/bench-host-conformance.mjs --host grok|codex|command|all`, with `bench-grok-host-conformance.mjs` as the Grok alias. Domains: host surface, tool inventory, teams, swarm, hive-mind, learning loop, neural and CLI parity for Grok; host plan and Codex init (AGENTS.md section, skill, default hook merge, trust step, opt-out) for Codex; host plan and the runner against a fake host for command hosts. Reports go to `docs/benchmarks/host-conformance-<host>-latest.{md,json}` (the alias keeps `grok-host-conformance-latest`). No model calls; child CLIs run with `RUFLO_DAEMON_AUTOSTART=0`.
+- **Live probe:** `scripts/probe-host-live.mjs` starts a model turn only with `--execute` (one headless turn per host) or `--live` (grok/claude: a memory round trip; codex/command: a one-step team through `ruflo team run`, asserting the run file, the lead's result message and the plan index). Codex `--execute` is `codex exec --ephemeral --sandbox read-only --skip-git-repo-check --json -`, passing on `turn.completed`. `--host command --command-label <label> --project <dir>` runs the round trip with a project's own host entry.
 
-- It accepts optional `outcome` (`done` | `failed`), `runId` and `reason`. `failed` marks the step `failed`, does not advance the plan, and returns a retry-or-reassign hint.
-- A repeated `runId` for the same agent is a no-op. That makes a hook and the runner reporting the same stop safe.
-- `role:agent` labels (Grok's `description`) are normalized to `agent`. Before this change, the Grok hook's fallback to `description` produced an invalid name and the stop was dropped.
-- Writes to `team.json` go to a temp file and are renamed into place, under a short `O_EXCL` lock file, because parallel runners now stop concurrently.
+## Consequences
 
-### `init --codex` additions
+### Positive
 
-These reuse `@claude-flow/codex` and do not add a second generator:
+- The same team semantics on Grok, Codex, Claude and any command host.
+- Exec hosts advance the pipeline without host hooks or hook trust.
+- Worktree isolation and sandboxes reduce multi-agent file conflicts compared with shared-tree teams.
+- One writer and a versioned format let external tools interoperate through `ruflo team <verb>`.
 
-- **MCP:** the existing `registerMCPServer` already registers `ruflo` when it is missing. There is no change.
-- **AGENTS.md:** a new `renderTeamBusSection()` in `generators/agents-md.ts` covers when to use `team_*`, the lead loop (`team_create` → `team_plan` → `team_spawn` → `ruflo team run` → `team_status`), and the rule that a child reads `team_inbox` first and ends by replying with its handoff.
-- **Skill:** a packaged `agent-teams` skill under the codex package's `.agents/skills/`. It is added to `BUILT_IN_SKILLS` and to the `default` and `minimal` template defaults.
-- **Hook (opt-in, `--team-hooks`):** idempotently merge one `SubagentStop` entry into project `.codex/hooks.json` that calls `ruflo team hook-stop --host codex`. Existing entries are kept. init prints the `/hooks` trust step and never writes `~/.codex/config.toml`. Without the flag, init writes no hook, and exec teams work fully.
+### Negative / costs
 
-### Canonical on-disk format and a single writer
+- The `team_*` tools, adapters and the runner must be maintained against moving host CLIs (flags are pinned in each plan's `contract`).
+- The Codex hook needs a one-time `/hooks` trust step; until then only the runner path reports stops.
+- Runner children do not yet get a minted capability envelope and invocation token the way dual-mode workers do. The environment builder is shared; the policy preflight is a follow-up.
 
-`.claude-flow/teams/<team>/team.json` and `.claude-flow/swarm/mailbox/<agent>/<priority>_<id>.json` are a public format. The `team_*` handlers in `team-tools.ts` are its only writer.
+### Neutral
 
-- `team-tools.ts` exports the types `TeamState`, `TeamMember`, `PlanStep` and `TeamMessage`, and the constant `TEAM_SCHEMA_VERSION = 1`. `team.json` gains `schemaVersion`. A missing `schemaVersion` means the legacy (v0) layout the original CLI bus wrote, which is readable as is.
-- Reads normalize v0 data. A plan step object missing `id`, `agent` or `status` is filled from its index, the same rule `team_plan` applies. A member `spawn` without a `host` key (the flat v0 Grok plan) is kept but has no `exec` entry, so `team run` refuses it with "re-register with team_spawn". The first write stamps `schemaVersion: 1`.
-- A reader that sees a `schemaVersion` higher than it knows returns an error and does not write. An older tool therefore cannot corrupt a newer layout.
-- The shipped `templates/grok/scripts/grok-team-bus.mjs` becomes a shim. It maps its existing flags to `ruflo team <verb> --params`, resolving the `ruflo` binary the same way the `ruflo-core` hook shim does, and it keeps its CLI surface. It no longer writes files itself.
+- teammate-plugin remains for native Claude TeammateTool users.
+- CLAUDE.md examples stay valid on Claude; `.grok/rules/ruflo-grok.md` takes precedence on Grok; AGENTS.md carries the Codex rules.
 
-### Verification
+## Alternatives considered
 
-- **Format:** a checked-in v0 fixture (a team.json and mailbox as written by the original CLI bus) is read by `team_status`, advanced by `team_on_stop`, and rewritten with `schemaVersion: 1` without losing fields. `schemaVersion: 2` is refused. The Grok shim produces byte-identical `team.json` key sets to the MCP handlers for the same sequence of calls.
-- **Unit:** plan shape per adapter (Grok unchanged; Codex sandbox, worktree and stdin; command placeholder validation and rejections); `stopIdentity` for each adapter; `team_on_stop` failed and duplicate cases and `role:agent` normalization; the runner with a fake exec host (a node one-liner) covering the result file, the handoff message and the plan advance; the lock under concurrent stops.
-- **Bench:** `bench-grok-host-conformance.mjs` becomes a host bench driven by `--host grok|codex|command|all`. The existing script name stays as an alias. New domains are host plan contract, runner (fake host), and the Codex init product (AGENTS.md section, skill, hooks merge on a temp dir). No model calls.
-- **Live probe:** `probe-host-live.mjs` makes model turns opt-in. `--execute` runs one headless turn, and `--live` adds the team round-trip. Without either flag, no host process that calls a model is started. The Codex adapter's `execute` step is implemented with `codex exec --ephemeral`, and needs no hook trust. `--live --host codex` runs a two-step team (a read-only child and a lead check) and asserts the plan advanced through the runner. The outcome comes from `--json` events, not from a hook.
-
-### Out of scope
-
-- Mailbox directories are keyed by agent, not by team, so two teams with the same agent name share an inbox. That is recorded here and not changed. Changing it would break existing on-disk mailboxes.
-- Minting a capability envelope and token for runner children the way the dual-mode orchestrator does is a follow-up. The runner reuses the orchestrator's environment builder but not its policy preflight.
+| Alternative | Why rejected |
+|-------------|--------------|
+| Prompt-only "pretend SendMessage" | No durable bus, no pipeline advancement |
+| Wait for hosts to add SendMessage | Speculative; the bus should not be proprietary |
+| Codex native subagents as the primary path | Delegation is prompt-triggered, not deterministic, and needs hook trust |
+| One named adapter per runtime in Ruflo | Does not scale; the command host covers any one-shot CLI |
+| Separate writers (CLI bus and MCP tools) | Different locking and status rules would corrupt each other |
 
 ## References
 
@@ -278,5 +256,4 @@ These reuse `@claude-flow/codex` and do not add a second generator:
 - `v3/plugins/teammate-plugin` — Claude-bound prior art
 - `.claude/helpers/swarm-comms.sh` — mailbox seed
 - `.grok/rules/ruflo-grok.md` — Grok host doctrine
-- Grok user guide: MCP, hooks, subagents, skills, Claude compat
-)
+- Grok user guide (subagents, hooks, MCP); `codex exec --help` (0.157.1)

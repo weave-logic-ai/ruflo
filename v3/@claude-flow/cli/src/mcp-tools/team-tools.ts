@@ -1,5 +1,5 @@
 /**
- * Host-agnostic Agent Teams MCP tools (ADR-320).
+ * Host-agnostic Agent Teams MCP tools (ADR-402).
  *
  * Comms live in Ruflo (filesystem under .claude-flow/), not host SendMessage.
  * team_spawn returns a spawn plan per host; each host's entry comes from its
@@ -57,7 +57,7 @@ export const teamTools: MCPTool[] = [
   {
     name: 'team_create',
     description:
-      'Create a host-agnostic Agent Team (ADR-320). State under .claude-flow/teams/. Use when native SendMessage/Task teammate bus is wrong or unavailable (Grok, Codex, multi-host). Pair with team_spawn for spawn plans and team_send/team_inbox for handoffs.',
+      'Create a host-agnostic Agent Team (ADR-402). State under .claude-flow/teams/. Use when native SendMessage/Task teammate bus is wrong or unavailable (Grok, Codex, multi-host). Pair with team_spawn for spawn plans and team_send/team_inbox for handoffs.',
     category: 'team',
     inputSchema: {
       type: 'object',
@@ -114,7 +114,7 @@ export const teamTools: MCPTool[] = [
   {
     name: 'team_spawn',
     description:
-      'Register a teammate and return a spawn plan per host (Grok spawn_subagent, Claude Task, Codex exec, or a command host from .claude-flow/team-hosts.json) — does not execute the agent; exec hosts run via `ruflo team run`. Use when native Task has no way to register a teammate into the host-agnostic team roster (ADR-320); the host lead still spawns using the returned plan. Pair with team_create first.',
+      'Register a teammate and return a spawn plan per host (Grok spawn_subagent, Claude Task, Codex exec, or a command host from .claude-flow/team-hosts.json) — does not execute the agent; exec hosts run via `ruflo team run`. Use when native Task has no way to register a teammate into the host-agnostic team roster (ADR-402); the host lead still spawns using the returned plan. Pair with team_create first.',
     category: 'team',
     inputSchema: {
       type: 'object',

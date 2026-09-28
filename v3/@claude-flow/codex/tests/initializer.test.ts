@@ -88,7 +88,7 @@ describe('Codex full template canonical skills (#2634)', () => {
   });
 });
 
-describe('Agent Teams stop hook (opt-in)', () => {
+describe('Agent Teams stop hook (on by default)', () => {
   const hooksFile = () => join(projectPath, '.codex', 'hooks.json');
   const readHooks = () => JSON.parse(readFileSync(hooksFile(), 'utf-8'));
 
@@ -134,16 +134,22 @@ describe('Agent Teams stop hook (opt-in)', () => {
     expect(teamStopHookCommand('win32')).toBe('cmd /c npx -y ruflo@latest team hook-stop --host codex');
   });
 
-  it('initialize writes no hook by default and one with teamHooks', async () => {
+  it('initialize merges the hook by default and prints the /hooks trust step', async () => {
     const plain = await new CodexInitializer().initialize({ projectPath, template: 'default' });
     expect(plain.success).toBe(true);
-    expect(existsSync(hooksFile())).toBe(false);
+    expect(readHooks().hooks.SubagentStop).toHaveLength(1);
+    expect(plain.warnings?.some((w) => w.includes('/hooks'))).toBe(true);
     expect(existsSync(join(projectPath, '.agents', 'skills', 'agent-teams', 'SKILL.md'))).toBe(true);
     expect(readFileSync(join(projectPath, 'AGENTS.md'), 'utf-8')).toContain('## Agent Teams');
 
-    const withHooks = await new CodexInitializer().initialize({ projectPath, template: 'default', force: true, teamHooks: true });
-    expect(withHooks.success).toBe(true);
+    const again = await new CodexInitializer().initialize({ projectPath, template: 'default', force: true });
+    expect(again.success).toBe(true);
     expect(readHooks().hooks.SubagentStop).toHaveLength(1);
-    expect(withHooks.warnings?.some((w) => w.includes('/hooks'))).toBe(true);
+  });
+
+  it('teamHooks: false (--no-team-hooks) writes no hook', async () => {
+    const r = await new CodexInitializer().initialize({ projectPath, template: 'default', teamHooks: false });
+    expect(r.success).toBe(true);
+    expect(existsSync(hooksFile())).toBe(false);
   });
 });

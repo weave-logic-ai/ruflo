@@ -1,6 +1,6 @@
 /**
  * `ruflo team` — non-MCP interface to the host-agnostic Agent Teams bus
- * (ADR-320).
+ * (ADR-402).
  *
  *   team <verb> --params '<json>'   call a team_* handler in-process, print JSON
  *   team run --team T --agent A     run a member's exec plan (Codex, command host)
@@ -139,7 +139,7 @@ const hookStopCommand: Command = {
 
 export const teamCommand: Command = {
   name: 'team',
-  description: 'Host-agnostic Agent Teams bus (ADR-320): call team_* handlers, run exec hosts, handle stop hooks',
+  description: 'Host-agnostic Agent Teams bus (ADR-402): call team_* handlers, run exec hosts, handle stop hooks',
   subcommands: [
     ...Object.entries(VERBS).map(([verb, toolName]) => verbCommand(verb, toolName)),
     runCommand,

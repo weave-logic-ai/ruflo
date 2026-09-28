@@ -1,5 +1,5 @@
 /**
- * On-disk state for host-agnostic Agent Teams (ADR-320).
+ * On-disk state for host-agnostic Agent Teams (ADR-402).
  *
  * The team_* handlers are the only writer of .claude-flow/teams/ and the
  * mailbox. Writes to team.json happen under a short O_EXCL lock file and go

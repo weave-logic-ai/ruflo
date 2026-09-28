@@ -64,7 +64,7 @@ const commandLoaders: Record<string, CommandLoader> = {
   progress: () => import('./progress.js'),
   // Issue Claims Commands (ADR-016)
   issues: () => import('./issues.js'),
-  // Host-agnostic Agent Teams bus (ADR-320)
+  // Host-agnostic Agent Teams bus (ADR-402)
   team: () => import('./team.js'),
   // Auto-update System (ADR-025)
   update: () => import('./update.js'),
